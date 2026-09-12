@@ -2611,6 +2611,24 @@ $CycleSourcePrefHandler = {
     }
     Save-UserSettings
     Update-PrefSourceButton
+
+    # Sag ustteki kaynak tercihi degistiginde, katalogdaki ve kuyruktaki tum cift kaynakli uygulamalari bu secime gore guncelle!
+    if ($global:preferredInstallSource -in @("Normal", "Store")) {
+        $targetPref = $global:preferredInstallSource
+        if ($global:allCards) {
+            foreach ($c in $global:allCards) {
+                if ($c.Tag -and $c.Tag.App) {
+                    $a = $c.Tag.App
+                    $isDual = ($a.HasDual -eq "1") -or ($a.StoreId -and ($a.NormalId -or $a.DownloadUrl))
+                    if ($isDual) {
+                        $a.SelectedSource = $targetPref
+                        Update-CardSourceBadge $c $targetPref
+                    }
+                }
+            }
+        }
+        Render-QueuePanel
+    }
 }
 
 if ($global:btnSourcePrefToggle) {
@@ -3528,16 +3546,20 @@ function Toggle-CardSelection($card) {
     if (-not $state.IsSelected) {
         $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
         if ($hasDualSource) {
-            # Kart üzerindeki rozette zaten bir seçim varsa (örneğin kullanıcı rozete tıklayıp Store veya Normal yaptıysa), doğrudan o kaynağı kullan!
-            if ($app.SelectedSource -in @("Normal", "Store")) {
-                $chosenSource = $app.SelectedSource
-            } elseif ($global:preferredInstallSource -in @("Normal", "Store")) {
-                $chosenSource = $global:preferredInstallSource
+            if ($global:preferredInstallSource -eq "Normal") {
+                # Sag ustte Normal secildiyse sorulmadan Normal yap
+                $chosenSource = "Normal"
+                $app.SelectedSource = $chosenSource
+                Update-CardSourceBadge $card $chosenSource
+            } elseif ($global:preferredInstallSource -eq "Store") {
+                # Sag ustte Store secildiyse sorulmadan Store yap
+                $chosenSource = "Store"
                 $app.SelectedSource = $chosenSource
                 Update-CardSourceBadge $card $chosenSource
             } else {
-                # Varsayilan olarak her zaman Normal (Web) gelsin
-                $chosenSource = "Normal"
+                # Sag ustte 'Her Zaman Sor' aciksa: Resim 3'teki gibi Show-SourceSelectDialog sor!
+                $chosenSource = Show-SourceSelectDialog $app $state.IconSource
+                if (-not $chosenSource) { return }
                 $app.SelectedSource = $chosenSource
                 Update-CardSourceBadge $card $chosenSource
             }
@@ -5265,17 +5287,23 @@ function Show-DefenderSecurityModal {
         $c.BorderThickness = New-Object System.Windows.Thickness(1.2)
         $c.CornerRadius = New-Object System.Windows.CornerRadius(10)
         $c.Padding = New-Object System.Windows.Thickness(12, 12, 12, 12)
-        $c.Margin = New-Object System.Windows.Thickness(0, 0, (if ($col -lt 3) { 8 } else { 0 }), 0)
+        $marginRight = if ($col -lt 3) { 12 } else { 0 }
+        $c.Margin = New-Object System.Windows.Thickness(0, 0, $marginRight, 0)
         $c.Cursor = "Hand"
 
         $sp = New-Object System.Windows.Controls.StackPanel
-        $iT = New-Object System.Windows.Controls.TextBlock; $iT.Text = $ico; $iT.FontSize = 20; $iT.Margin = New-Object System.Windows.Thickness(0,0,0,6)
-        $tT = New-Object System.Windows.Controls.TextBlock; $tT.Text = $title; $tT.FontSize = 12; $tT.FontWeight = "Bold"; $tT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-        $sT = New-Object System.Windows.Controls.TextBlock; $sT.Text = $sub; $sT.FontSize = 9.5; $sT.Foreground = Brush("#94A3B8"); $sT.Margin = New-Object System.Windows.Thickness(0,2,0,0); $sT.TextWrapping = "Wrap"
+        $iT = New-Object System.Windows.Controls.TextBlock; $iT.Text = $ico; $iT.FontSize = 22; $iT.Margin = New-Object System.Windows.Thickness(0,0,0,6)
+        $tT = New-Object System.Windows.Controls.TextBlock; $tT.Text = $title; $tT.FontSize = 12.5; $tT.FontWeight = "Bold"
+        $tT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#1E293B") }
+        
+        $sT = New-Object System.Windows.Controls.TextBlock; $sT.Text = $sub; $sT.FontSize = 10
+        # Beyaz temada kotu duran koyu siyah yerine okunakli ve modern gri tonu (#64748B)
+        $sT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+        $sT.Margin = New-Object System.Windows.Thickness(0,3,0,0); $sT.TextWrapping = "Wrap"
         [void]$sp.Children.Add($iT); [void]$sp.Children.Add($tT); [void]$sp.Children.Add($sT)
         $c.Child = $sp
 
-        $c.Add_MouseEnter({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1A2E4C") } else { Brush("#F0F9FF") } })
+        $c.Add_MouseEnter({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1A2E4C") } else { Brush("#F1F5F9") } })
         $c.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush("#FFFFFF") } })
 
         [System.Windows.Controls.Grid]::SetColumn($c, $col)
@@ -5371,10 +5399,6 @@ function Show-DefenderSecurityModal {
 
     $RunSilentDefender = {
         param([string]$scanArg, [string]$actionName)
-        if (-not $mpCmdPath -or -not (Test-Path $mpCmdPath)) {
-            $txtLog.Text = "[HATA] MpCmdRun.exe Windows Defender aracı sistemde bulunamadı."
-            return
-        }
 
         $cardQuick.IsEnabled = $false; $cardFull.IsEnabled = $false; $cardUpd.IsEnabled = $false; $cardOpen.IsEnabled = $false
         $pBar.IsIndeterminate = $true; $pBar.Visibility = [System.Windows.Visibility]::Visible
@@ -5385,27 +5409,70 @@ function Show-DefenderSecurityModal {
         $sCol3Val.Text = "00:00"
         $timer.Start()
 
+        $activeMpPath = $mpCmdPath
+        $workerArg = @{
+            MpPath = $activeMpPath
+            ScanArg = $scanArg
+            Action = $actionName
+        }
+
         $bgWorker = New-Object System.ComponentModel.BackgroundWorker
         $bgWorker.DoWork += {
             param($s, $e)
-            $psi = New-Object System.Diagnostics.ProcessStartInfo
-            $psi.FileName = $mpCmdPath
-            $psi.Arguments = $e.Argument
-            $psi.UseShellExecute = $false
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
-            $psi.CreateNoWindow = $true
-            $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            $wArg = $e.Argument
+            $exe = $wArg.MpPath
+            $arg = $wArg.ScanArg
+            $action = $wArg.Action
 
-            $proc = [System.Diagnostics.Process]::Start($psi)
-            $out = $proc.StandardOutput.ReadToEnd()
-            $err = $proc.StandardError.ReadToEnd()
-            $proc.WaitForExit()
+            $outText = ""
+            $errCode = 0
+
+            # 1. Oncelik: MpCmdRun.exe
+            if ($exe -and (Test-Path $exe)) {
+                try {
+                    $psi = New-Object System.Diagnostics.ProcessStartInfo
+                    $psi.FileName = $exe
+                    $psi.Arguments = $arg
+                    $psi.UseShellExecute = $false
+                    $psi.RedirectStandardOutput = $true
+                    $psi.RedirectStandardError = $true
+                    $psi.CreateNoWindow = $true
+                    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+
+                    $proc = [System.Diagnostics.Process]::Start($psi)
+                    $outText = $proc.StandardOutput.ReadToEnd()
+                    $errText = $proc.StandardError.ReadToEnd()
+                    $proc.WaitForExit()
+                    $errCode = $proc.ExitCode
+                    if ($errText) { $outText += "`n" + $errText }
+                } catch {
+                    $outText = "MpCmdRun hatasi: " + $_.Exception.Message
+                    $errCode = -1
+                }
+            } else {
+                # 2. Alternatif: PowerShell Defender Modulu
+                try {
+                    if ($arg -match 'ScanType 1') {
+                        Start-MpScan -ScanType QuickScan -ErrorAction Stop
+                        $outText = "Hızlı tarama tamamlandı."
+                    } elseif ($arg -match 'ScanType 2') {
+                        Start-MpScan -ScanType FullScan -ErrorAction Stop
+                        $outText = "Tam tarama tamamlandı."
+                    } elseif ($arg -match 'SignatureUpdate') {
+                        Update-MpSignature -ErrorAction Stop
+                        $outText = "İmza tanımları güncellendi."
+                    }
+                    $errCode = 0
+                } catch {
+                    $outText = "Defender komut hatası: " + $_.Exception.Message
+                    $errCode = 1
+                }
+            }
 
             $e.Result = @{
-                ExitCode = $proc.ExitCode
-                Output = $out
-                Error = $err
+                ExitCode = $errCode
+                Output = $outText
+                Action = $action
             }
         }
 
@@ -5416,25 +5483,27 @@ function Show-DefenderSecurityModal {
             $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
             $pBar.Visibility = [System.Windows.Visibility]::Collapsed
 
-            $fullOut = "$($res.Output)`n$($res.Error)".Trim()
-            $txtLog.Text += "`n$fullOut`n`n"
+            $fullOut = "$($res.Output)".Trim()
+            if ($fullOut) {
+                $txtLog.Text += "`n$fullOut`n"
+            }
 
             if ($res.ExitCode -eq 0) {
                 $sCol1Val.Text = "● Koruma Aktif (Temiz)"; $sCol1Val.Foreground = Brush("#10B981")
                 $sCol2Val.Text = "0 Tehdit"; $sCol2Val.Foreground = Brush("#10B981")
-                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] İşlem başarıyla tamamlandı. Tehdit tespit edilmedi.`n"
+                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($res.Action) başarıyla tamamlandı. Tehdit tespit edilmedi.`n"
             } elseif ($res.ExitCode -eq 2) {
                 $sCol1Val.Text = "● Tehdit Tespit Edildi!"; $sCol1Val.Foreground = Brush("#EF4444")
                 $sCol2Val.Text = "⚠️ Tehdit Var!"; $sCol2Val.Foreground = Brush("#EF4444")
                 $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] DİKKAT: Sistemde güvenlik tehdidi tespit edildi!`n"
             } else {
                 $sCol1Val.Text = "● Tamamlandı"; $sCol1Val.Foreground = Brush("#38BDF8")
-                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] İşlem bitti (Kod: $($res.ExitCode)).`n"
+                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($res.Action) tamamlandı (Kod: $($res.ExitCode)).`n"
             }
             $txtLog.ScrollToEnd()
         }
 
-        $bgWorker.RunWorkerAsync($scanArg)
+        $bgWorker.RunWorkerAsync($workerArg)
     }
 
     $cardQuick.Add_MouseLeftButtonUp({ & $RunSilentDefender "-Scan -ScanType 1" "Hızlı Tarama" })
@@ -5450,15 +5519,40 @@ function Show-DefenderSecurityModal {
 }
 
 function Show-DiskCleanerModal {
+    function Brush([string]$hex) {
+        try {
+            return [System.Windows.Media.BrushConverter]::new().ConvertFromString($hex)
+        } catch {
+            return [System.Windows.Media.Brushes]::Transparent
+        }
+    }
+
+    function Format-CleanerBytes([double]$bytes) {
+        if ($bytes -le 0) { return "0 B" }
+        if ($bytes -lt 1KB) { return "$bytes B" }
+        if ($bytes -lt 1MB) { return "$([Math]::Round($bytes / 1KB, 1)) KB" }
+        if ($bytes -lt 1GB) { return "$([Math]::Round($bytes / 1MB, 1)) MB" }
+        return "$([Math]::Round($bytes / 1GB, 2)) GB"
+    }
+
+    $cleanerLogosDir = if ($global:localLogosDir -and (Test-Path $global:localLogosDir)) {
+        $global:localLogosDir
+    } elseif (Test-Path "c:\projem\logolar") {
+        "c:\projem\logolar"
+    } elseif (Test-Path "$PSScriptRoot\logolar") {
+        "$PSScriptRoot\logolar"
+    } else {
+        ""
+    }
+
     $cWin = New-Object System.Windows.Window
     $cWin.Title = "Sistem ve Disk Temizleyici (PC Cleaner Pro)"
     $cWin.Width = 840
     $cWin.Height = 690
     $cWin.MinWidth = 760
     $cWin.MinHeight = 580
-    $cWin.WindowStartupLocation = "CenterOwner"
+    $cWin.WindowStartupLocation = "CenterScreen"
     try { if ($window -and $window.IsVisible) { $cWin.Owner = $window } } catch {}
-    try { $cWin.Resources = $window.Resources } catch {}
     $cWin.Background = if ($global:isDark) { Brush("#0B0E14") } else { Brush("#F0F2F5") }
     $cWin.Foreground = if ($global:isDark) { Brush("#F3F4F6") } else { Brush("#0F172A") }
 
@@ -5500,7 +5594,8 @@ function Show-DiskCleanerModal {
     $logoTxt = New-Object System.Windows.Controls.TextBlock
     $logoTxt.Text = "🧹"
     $logoTxt.FontSize = 22
-    $logoTxt.HorizontalAlignment = "Center"; $logoTxt.VerticalAlignment = "Center"
+    $logoTxt.HorizontalAlignment = "Center"
+    $logoTxt.VerticalAlignment = "Center"
     $logoB.Child = $logoTxt
     [System.Windows.Controls.Grid]::SetColumn($logoB, 0)
     [void]$hGrid.Children.Add($logoB)
@@ -5508,52 +5603,58 @@ function Show-DiskCleanerModal {
     $titleSp = New-Object System.Windows.Controls.StackPanel
     $titleSp.VerticalAlignment = "Center"
     $t1 = New-Object System.Windows.Controls.TextBlock
-    $t1.Text = "Sistem & Disk Temizleyici (PC Cleaner)"
-    $t1.FontSize = 16.5; $t1.FontWeight = "Bold"
-    $t1.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
+    $t1.Text = "Sistem & Disk Temizleyici"
+    $t1.FontSize = 18
+    $t1.FontWeight = "Bold"
+    $t1.Foreground = if ($global:isDark) { Brush("#F9FAFB") } else { Brush("#0F172A") }
     [void]$titleSp.Children.Add($t1)
 
     $t2 = New-Object System.Windows.Controls.TextBlock
-    $t2.Text = "Gereksiz geçici dosyaları, önbellekleri, logları ve çöp kutusunu temizleyerek disk alanı kazanın."
-    $t2.FontSize = 11
+    $t2.Text = "Gereksiz geçici dosyaları, sistem ve tarayıcı önbelleklerini temizleyerek disk alanı açın"
+    $t2.FontSize = 12
     $t2.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
-    $t2.Margin = New-Object System.Windows.Thickness(0,2,0,0)
+    $t2.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
     [void]$titleSp.Children.Add($t2)
     [System.Windows.Controls.Grid]::SetColumn($titleSp, 1)
     [void]$hGrid.Children.Add($titleSp)
 
+    # Total Junk Box
     $sumBorder = New-Object System.Windows.Controls.Border
-    $sumBorder.Background = if ($global:isDark) { Brush("#151C28") } else { Brush("#F8FAFC") }
-    $sumBorder.BorderBrush = if ($global:isDark) { Brush("#232E40") } else { Brush("#E2E8F0") }
-    $sumBorder.BorderThickness = New-Object System.Windows.Thickness(1)
     $sumBorder.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $sumBorder.Background = if ($global:isDark) { Brush("#182030") } else { Brush("#F1F5F9") }
+    $sumBorder.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $sumBorder.BorderThickness = New-Object System.Windows.Thickness(1)
     $sumBorder.Padding = New-Object System.Windows.Thickness(16, 8, 16, 8)
+    $sumBorder.VerticalAlignment = "Center"
 
     $sumSp = New-Object System.Windows.Controls.StackPanel
     $sumSp.HorizontalAlignment = "Right"
     $sumLbl = New-Object System.Windows.Controls.TextBlock
     $sumLbl.Text = "BULUNAN GEREKSİZ ALAN"
-    $sumLbl.FontSize = 9; $sumLbl.FontWeight = "Bold"
-    $sumLbl.Foreground = if ($global:isDark) { Brush("#8C9BB0") } else { Brush("#64748B") }
+    $sumLbl.FontSize = 10
+    $sumLbl.FontWeight = "SemiBold"
+    $sumLbl.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
     $sumLbl.HorizontalAlignment = "Right"
     [void]$sumSp.Children.Add($sumLbl)
 
     $txtTotalJunk = New-Object System.Windows.Controls.TextBlock
-    $txtTotalJunk.Text = "0 B"
-    $txtTotalJunk.FontSize = 18; $txtTotalJunk.FontWeight = "Bold"
-    $txtTotalJunk.Foreground = Brush("#22C55E")
+    $txtTotalJunk.Text = "Hesaplanıyor..."
+    $txtTotalJunk.FontSize = 20
+    $txtTotalJunk.FontWeight = "Bold"
+    $txtTotalJunk.Foreground = Brush("#38BDF8")
     $txtTotalJunk.HorizontalAlignment = "Right"
     [void]$sumSp.Children.Add($txtTotalJunk)
-
     $sumBorder.Child = $sumSp
+
     [System.Windows.Controls.Grid]::SetColumn($sumBorder, 2)
     [void]$hGrid.Children.Add($sumBorder)
-
     $headerBorder.Child = $hGrid
 
-    # 2. ACTION BAR
+    # 2. ACTION BAR (Select All + Buttons)
     $actionBorder = New-Object System.Windows.Controls.Border
-    $actionBorder.Background = if ($global:isDark) { Brush("#0E131C") } else { Brush("#F1F5F9") }
+    $actionBorder.Background = if ($global:isDark) { Brush("#0E131F") } else { Brush("#F8FAFC") }
+    $actionBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $actionBorder.BorderThickness = New-Object System.Windows.Thickness(0,0,0,1)
     $actionBorder.Padding = New-Object System.Windows.Thickness(24, 10, 24, 10)
     [System.Windows.Controls.Grid]::SetRow($actionBorder, 1)
     [void]$gridMain.Children.Add($actionBorder)
@@ -5564,73 +5665,75 @@ function Show-DiskCleanerModal {
     $aCol2 = New-Object System.Windows.Controls.ColumnDefinition; $aCol2.Width = [System.Windows.GridLength]::Auto
     [void]$actGrid.ColumnDefinitions.Add($aCol0); [void]$actGrid.ColumnDefinitions.Add($aCol1); [void]$actGrid.ColumnDefinitions.Add($aCol2)
 
-    $chkSelectAll = New-Object System.Windows.Controls.CheckBox
-    $chkSelectAll.Content = " Tümünü Seç / Kaldır"
-    $chkSelectAll.IsChecked = $true
-    $chkSelectAll.FontSize = 11.5
-    $chkSelectAll.FontWeight = "SemiBold"
-    $chkSelectAll.VerticalAlignment = "Center"
-    $chkSelectAll.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#334155") }
-    [System.Windows.Controls.Grid]::SetColumn($chkSelectAll, 0)
-    [void]$actGrid.Children.Add($chkSelectAll)
+    # Modern Select All Button
+    $btnSelectAll = New-Object System.Windows.Controls.Button
+    $btnSelectAll.Content = "✓ Tümünü Seç / Kaldır"
+    $btnSelectAll.Padding = New-Object System.Windows.Thickness(12, 6, 12, 6)
+    $btnSelectAll.FontSize = 12
+    $btnSelectAll.Cursor = "Hand"
+    $btnSelectAll.Background = if ($global:isDark) { Brush("#1A2234") } else { Brush("#E2E8F0") }
+    $btnSelectAll.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+    $btnSelectAll.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $btnSelectAll.BorderThickness = New-Object System.Windows.Thickness(1)
+    $btnSelectAll.VerticalAlignment = "Center"
+    [System.Windows.Controls.Grid]::SetColumn($btnSelectAll, 0)
+    [void]$actGrid.Children.Add($btnSelectAll)
 
     $actBtnSp = New-Object System.Windows.Controls.StackPanel
     $actBtnSp.Orientation = "Horizontal"
-    $actBtnSp.HorizontalAlignment = "Right"
+    $actBtnSp.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($actBtnSp, 2)
     [void]$actGrid.Children.Add($actBtnSp)
 
-    $btnTpl = '<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="b" Background="{TemplateBinding Background}" CornerRadius="16" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="14,0,14,0"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.88"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.75"/></Trigger></ControlTemplate.Triggers></ControlTemplate>'
-
+    # Windows Disk Cleanup button (cleanmgr)
     $btnWinClean = New-Object System.Windows.Controls.Button
-    $btnWinClean.Content = "⚙ Windows Disk Temizleme"
-    $btnWinClean.Height = 32
-    $btnWinClean.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnWinClean.Foreground = if ($global:isDark) { Brush("#CBD5E1") } else { Brush("#334155") }
-    $btnWinClean.FontWeight = "Bold"
-    $btnWinClean.FontSize = 11
-    $btnWinClean.Margin = New-Object System.Windows.Thickness(0,0,8,0)
-    $btnWinClean.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnWinClean.Content = "⚙️ Windows Temizleme (cleanmgr)"
+    $btnWinClean.Padding = New-Object System.Windows.Thickness(12, 6, 12, 6)
+    $btnWinClean.FontSize = 12
+    $btnWinClean.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnWinClean.Cursor = "Hand"
-    $btnWinClean.Template = [System.Windows.Markup.XamlReader]::Parse($btnTpl)
+    $btnWinClean.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnWinClean.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
+    $btnWinClean.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $btnWinClean.BorderThickness = New-Object System.Windows.Thickness(1)
     $btnWinClean.Add_Click({
-        try { Start-Process "cleanmgr.exe" -ArgumentList "/d c" } catch {}
+        try { Start-Process "cleanmgr.exe" } catch { [System.Windows.MessageBox]::Show($_.Exception.Message) }
     })
     [void]$actBtnSp.Children.Add($btnWinClean)
 
+    # Rescan Button
     $btnScan = New-Object System.Windows.Controls.Button
-    $btnScan.Content = "🔍 Yeniden Tara"
-    $btnScan.Height = 32
-    $btnScan.Background = Brush("#0284C7")
-    $btnScan.Foreground = Brush("#FFFFFF")
-    $btnScan.FontWeight = "Bold"
-    $btnScan.FontSize = 11
-    $btnScan.Margin = New-Object System.Windows.Thickness(0,0,8,0)
-    $btnScan.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnScan.Content = "🔄 Yeniden Tara"
+    $btnScan.Padding = New-Object System.Windows.Thickness(14, 6, 14, 6)
+    $btnScan.FontSize = 12
+    $btnScan.FontWeight = "SemiBold"
+    $btnScan.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnScan.Cursor = "Hand"
-    $btnScan.Template = [System.Windows.Markup.XamlReader]::Parse($btnTpl)
+    $btnScan.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnScan.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+    $btnScan.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#94A3B8") }
+    $btnScan.BorderThickness = New-Object System.Windows.Thickness(1)
     [void]$actBtnSp.Children.Add($btnScan)
 
+    # Clean Button
     $btnClean = New-Object System.Windows.Controls.Button
-    $btnClean.Content = "🧹 Seçilenleri Güvenle Temizle"
-    $btnClean.Height = 32
-    $btnClean.Background = Brush("#10B981")
-    $btnClean.Foreground = Brush("#FFFFFF")
+    $btnClean.Content = "🚀 Seçilenleri Temizle"
+    $btnClean.Padding = New-Object System.Windows.Thickness(18, 6, 18, 6)
+    $btnClean.FontSize = 12.5
     $btnClean.FontWeight = "Bold"
-    $btnClean.FontSize = 11.5
-    $btnClean.BorderThickness = New-Object System.Windows.Thickness(0)
     $btnClean.Cursor = "Hand"
-    $btnClean.Template = [System.Windows.Markup.XamlReader]::Parse($btnTpl)
+    $btnClean.Background = Brush("#0284C7")
+    $btnClean.Foreground = Brush("#FFFFFF")
+    $btnClean.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnClean.IsEnabled = $false
     [void]$actBtnSp.Children.Add($btnClean)
 
     $actionBorder.Child = $actGrid
 
-    # 3. PROGRESS BAR
+    # 3. PROGRESS BAR STRIP
     $progBorder = New-Object System.Windows.Controls.Border
-    $progBorder.Background = if ($global:isDark) { Brush("#0B1320") } else { Brush("#E0F2FE") }
-    $progBorder.BorderBrush = Brush("#38BDF8")
-    $progBorder.BorderThickness = New-Object System.Windows.Thickness(0,0,0,1)
-    $progBorder.Padding = New-Object System.Windows.Thickness(24, 8, 24, 8)
+    $progBorder.Background = if ($global:isDark) { Brush("#151D2A") } else { Brush("#E0F2FE") }
+    $progBorder.Padding = New-Object System.Windows.Thickness(24, 6, 24, 6)
     $progBorder.Visibility = [System.Windows.Visibility]::Collapsed
     [System.Windows.Controls.Grid]::SetRow($progBorder, 2)
     [void]$gridMain.Children.Add($progBorder)
@@ -5638,36 +5741,37 @@ function Show-DiskCleanerModal {
     $pSp = New-Object System.Windows.Controls.StackPanel
     $pTxt = New-Object System.Windows.Controls.TextBlock
     $pTxt.Text = "Taranıyor..."
-    $pTxt.FontSize = 11; $pTxt.FontWeight = "SemiBold"
-    $pTxt.Foreground = Brush("#38BDF8")
-    $pTxt.Margin = New-Object System.Windows.Thickness(0,0,0,4)
+    $pTxt.FontSize = 11.5
+    $pTxt.Foreground = Brush("#0284C7")
+    $pTxt.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
     [void]$pSp.Children.Add($pTxt)
 
     $pBar = New-Object System.Windows.Controls.ProgressBar
-    $pBar.Height = 4
     $pBar.IsIndeterminate = $true
-    $pBar.Foreground = Brush("#38BDF8")
-    $pBar.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#BAE6FD") }
+    $pBar.Height = 3
+    $pBar.Foreground = Brush("#0284C7")
+    $pBar.Background = if ($global:isDark) { Brush("#233145") } else { Brush("#BAE6FD") }
     $pBar.BorderThickness = New-Object System.Windows.Thickness(0)
     [void]$pSp.Children.Add($pBar)
     $progBorder.Child = $pSp
 
-    # 4. CONTENT LIST
+    # 4. SCROLLABLE LIST OF CATEGORIES
     $scroll = New-Object System.Windows.Controls.ScrollViewer
     $scroll.VerticalScrollBarVisibility = "Auto"
-    $scroll.Margin = New-Object System.Windows.Thickness(24, 12, 24, 12)
+    $scroll.HorizontalScrollBarVisibility = "Disabled"
+    $scroll.Padding = New-Object System.Windows.Thickness(24, 16, 24, 16)
     [System.Windows.Controls.Grid]::SetRow($scroll, 3)
     [void]$gridMain.Children.Add($scroll)
 
-    $itemsSp = New-Object System.Windows.Controls.StackPanel
-    $scroll.Content = $itemsSp
+    $listSp = New-Object System.Windows.Controls.StackPanel
+    $scroll.Content = $listSp
 
-    # 5. FOOTER
+    # 5. FOOTER INFO
     $footerBorder = New-Object System.Windows.Controls.Border
-    $footerBorder.Background = if ($global:isDark) { Brush("#111622") } else { Brush("#FFFFFF") }
+    $footerBorder.Background = if ($global:isDark) { Brush("#0E131F") } else { Brush("#F8FAFC") }
     $footerBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
     $footerBorder.BorderThickness = New-Object System.Windows.Thickness(0,1,0,0)
-    $footerBorder.Padding = New-Object System.Windows.Thickness(24, 10, 24, 12)
+    $footerBorder.Padding = New-Object System.Windows.Thickness(24, 12, 24, 12)
     [System.Windows.Controls.Grid]::SetRow($footerBorder, 4)
     [void]$gridMain.Children.Add($footerBorder)
 
@@ -5677,129 +5781,141 @@ function Show-DiskCleanerModal {
     [void]$fGrid.ColumnDefinitions.Add($fCol0); [void]$fGrid.ColumnDefinitions.Add($fCol1)
 
     $fHint = New-Object System.Windows.Controls.TextBlock
-    $fHint.Text = "🛡 Güvenli Temizlik: Sistemde şu an açık veya kilitli dosyalar güvenle atlanır."
-    $fHint.FontSize = 10.5
+    $fHint.Text = "💡 İpucu: Temizlik yalnızca önbellek ve geçici dosyaları siler, kişisel belgelerinize ve şifrelerinize dokunmaz."
+    $fHint.FontSize = 11.5
+    $fHint.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
     $fHint.VerticalAlignment = "Center"
-    $fHint.Foreground = if ($global:isDark) { Brush("#64748B") } else { Brush("#94A3B8") }
     [System.Windows.Controls.Grid]::SetColumn($fHint, 0)
     [void]$fGrid.Children.Add($fHint)
 
     $btnClose = New-Object System.Windows.Controls.Button
     $btnClose.Content = "Kapat"
-    $btnClose.Width = 90
-    $btnClose.Height = 30
-    $btnClose.Background = if ($global:isDark) { Brush("#1F2937") } else { Brush("#E2E8F0") }
-    $btnClose.Foreground = if ($global:isDark) { Brush("#CBD5E1") } else { Brush("#334155") }
-    $btnClose.FontWeight = "Bold"
-    $btnClose.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnClose.Padding = New-Object System.Windows.Thickness(18, 6, 18, 6)
+    $btnClose.FontSize = 12
     $btnClose.Cursor = "Hand"
-    $btnClose.Template = [System.Windows.Markup.XamlReader]::Parse($btnTpl)
+    $btnClose.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnClose.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+    $btnClose.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $btnClose.BorderThickness = New-Object System.Windows.Thickness(1)
     $btnClose.Add_Click({ $cWin.Close() })
     [System.Windows.Controls.Grid]::SetColumn($btnClose, 1)
     [void]$fGrid.Children.Add($btnClose)
-
     $footerBorder.Child = $fGrid
-    $cWin.Content = $gridMain
 
-    # CATEGORIES DEFINITION (Sistem Öğeleri Aynen Korunur, Tarayıcılarda Gerçek Logolar Yüklenir)
-    $systemCategories = @(
-        @{
-            Id = "UserTemp"; Title = "Kullanıcı Geçici Dosyaları (%TEMP%)"; Desc = "Uygulamaların ve pencerelerin geride bıraktığı geçici çalışma dosyaları.";
-            Icon = "📁"; Group = "Sistem Önbellekleri"; Paths = @($env:TEMP); Type = "FolderFiles"
-        },
-        @{
-            Id = "WinTemp"; Title = "Windows Sistem Temp (C:\Windows\Temp)"; Desc = "Windows işletim sistemi ve servislerin oluşturduğu geçici sistem verileri.";
-            Icon = "🗄️"; Group = "Sistem Önbellekleri"; Paths = @("C:\Windows\Temp"); Type = "FolderFiles"
-        },
-        @{
-            Id = "Prefetch"; Title = "Windows Prefetch Önbelleği"; Desc = "Eski uygulama başlatma kalıntıları ve ön yükleme izleri (C:\Windows\Prefetch).";
-            Icon = "⚡"; Group = "Sistem Önbellekleri"; Paths = @("C:\Windows\Prefetch"); Type = "FolderFiles"
-        },
-        @{
-            Id = "RecycleBin"; Title = "Geri Dönüşüm Kutusu (Recycle Bin)"; Desc = "Silinmiş ve çöp kutusunda bekleyen tüm sürücülerdeki dosyalar.";
-            Icon = "🗑️"; Group = "Depolama & Çöp"; Type = "RecycleBin"
-        },
-        @{
-            Id = "WinUpdate"; Title = "Windows Update İndirme Önbelleği"; Desc = "Tamamlanmış Windows güncellemelerinin geçici yükleme paketleri.";
-            Icon = "🔄"; Group = "Windows Güncelleme"; Paths = @("C:\Windows\SoftwareDistribution\Download"); Type = "FolderFiles"
-        },
-        @{
-            Id = "Thumbnails"; Title = "Küçük Resim Önbelleği (Thumbnails)"; Desc = "Dosya Gezgini tarafından oluşturulan resim ve video küçük önizleme veri tabanları.";
-            Icon = "🖼️"; Group = "Windows Gezgini"; Paths = @("$env:LOCALAPPDATA\Microsoft\Windows\Explorer"); Filter = "thumbcache_*.db"; Type = "FilterFiles"
-        },
-        @{
-            Id = "CrashDumps"; Title = "Çökme Raporları & Minidump (WER)"; Desc = "Uygulama çökme raporları, bellek dökümleri ve Windows Error Reporting kayıtları.";
-            Icon = "⚠️"; Group = "Raporlama & Günlükler"; Paths = @("C:\Windows\Minidump", "$env:LOCALAPPDATA\CrashDumps", "$env:PROGRAMDATA\Microsoft\Windows\WER\ReportArchive", "$env:PROGRAMDATA\Microsoft\Windows\WER\ReportQueue"); Type = "FolderFiles"
-        },
-        @{
-            Id = "SysLogs"; Title = "Windows Sistem & Kurulum Günlükleri"; Desc = "Eski sistem logları, CBS kurulum kayıtları ve analiz log dosyaları (*.log).";
-            Icon = "📝"; Group = "Raporlama & Günlükler"; Paths = @("C:\Windows\Logs", "C:\Windows\Panther"); Type = "FolderFiles"
-        }
-    )
+    # CATEGORIES DEFINITION (Only Installed Browsers are Included!)
+    $categories = [System.Collections.ArrayList]::new()
 
-    $browserCategories = @()
+    # System categories with vibrant color styles
+    [void]$categories.Add(@{
+        Id = "UserTemp"; Title = "Kullanıcı Geçici Dosyaları (User Temp)"; Desc = "Kullanıcı profilinizdeki geçici uygulama çalışma ve önbellek dosyaları"
+        Icon = "📁"; IconColor = "#FBBF24"; BoxBg = if ($global:isDark) { "#2D1C08" } else { "#FEF3C7" }; BoxBorder = "#F59E0B"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Önbellekleri"; Paths = @($env:TEMP); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "WinTemp"; Title = "Windows Sistem Geçici Dosyaları (System Temp)"; Desc = "Windows işletim sisteminin ortak geçici çalışma dizini (C:\Windows\Temp)"
+        Icon = "⚙️"; IconColor = "#60A5FA"; BoxBg = if ($global:isDark) { "#0C2340" } else { "#DBEAFE" }; BoxBorder = "#3B82F6"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Önbellekleri"; Paths = @("$env:SystemRoot\Temp"); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "Prefetch"; Title = "Windows Prefetch (Ön Yükleme Dosyaları)"; Desc = "Eski uygulama açılış izleri ve önbellek dizinleri"
+        Icon = "⚡"; IconColor = "#C084FC"; BoxBg = if ($global:isDark) { "#20103A" } else { "#F3E8FF" }; BoxBorder = "#8B5CF6"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Önbellekleri"; Paths = @("$env:SystemRoot\Prefetch"); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "RecycleBin"; Title = "Geri Dönüşüm Kutusu (Recycle Bin)"; Desc = "Silinmiş ve çöp kutusunda bekleyen tüm dosyalar"
+        Icon = "🗑️"; IconColor = "#F87171"; BoxBg = if ($global:isDark) { "#2B0E14" } else { "#FEE2E2" }; BoxBorder = "#EF4444"
+        IsLogo = $false; LogoFile = $null; Group = "Kullanıcı Dosyaları"; Paths = @(); Filter = "*"; Type = "RecycleBin"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "WinUpdate"; Title = "Windows Güncelleme İndirme Önbelleği"; Desc = "Başarıyla yüklenmiş eski Windows Update kurulum paketleri"
+        Icon = "🔄"; IconColor = "#34D399"; BoxBg = if ($global:isDark) { "#042A1D" } else { "#D1FAE5" }; BoxBorder = "#10B981"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Bakımı"; Paths = @("$env:SystemRoot\SoftwareDistribution\Download"); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "Thumbnails"; Title = "Küçük Resim (Thumbnail) Önbelleği"; Desc = "Windows Gezgini resim ve video küçük önizleme veritabanı"
+        Icon = "🖼️"; IconColor = "#38BDF8"; BoxBg = if ($global:isDark) { "#072635" } else { "#E0F2FE" }; BoxBorder = "#06B6D4"
+        IsLogo = $false; LogoFile = $null; Group = "Görsel Önbellekler"; Paths = @((Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Explorer")); Filter = "thumbcache_*.db"; Type = "FilterFiles"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "CrashDumps"; Title = "Hata Raporları ve Crash Dump Dosyaları"; Desc = "Uygulama çökmelerinde Windows tarafından kaydedilen dmp döküm dosyaları"
+        Icon = "💥"; IconColor = "#FB923C"; BoxBg = if ($global:isDark) { "#2B1208" } else { "#FFEDD5" }; BoxBorder = "#F97316"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Bakımı"; Paths = @((Join-Path $env:LOCALAPPDATA "CrashDumps"), (Join-Path $env:LOCALAPPDATA "Microsoft\Windows\WER")); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
+    [void]$categories.Add(@{
+        Id = "SystemLogs"; Title = "Sistem & Kurulum Log Dosyaları"; Desc = "Eski yazılım kurulum ve Windows tanılama günlük dosyaları"
+        Icon = "📋"; IconColor = "#818CF8"; BoxBg = if ($global:isDark) { "#161933" } else { "#E0E7FF" }; BoxBorder = "#6366F1"
+        IsLogo = $false; LogoFile = $null; Group = "Sistem Bakımı"; Paths = @("$env:SystemRoot\Logs"); Filter = "*"; Type = "Normal"
+        IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+    })
 
-    # Google Chrome
+    # DYNAMIC BROWSER FILTERING: ONLY ADD IF ACTUALLY INSTALLED!
     $chromeData = Join-Path $env:LOCALAPPDATA "Google\Chrome\User Data"
     if (Test-Path $chromeData) {
-        $browserCategories += @{
-            Id = "ChromeCache"; Title = "Google Chrome Önbelleği"; Desc = "Google Chrome web tarayıcısının geçici internet verileri ve medya önbelleği.";
-            Icon = "🌐"; LogoFile = "3840px-Google_Chrome_icon_Februa.png"; Group = "Web Tarayıcıları";
-            Paths = @((Join-Path $chromeData "Default\Cache"), (Join-Path $chromeData "Default\Code Cache")); Type = "FolderFiles"
-        }
+        [void]$categories.Add(@{
+            Id = "ChromeCache"; Title = "Google Chrome Önbelleği"; Desc = "Google Chrome web tarayıcısının geçici internet önbellek dosyaları"
+            Icon = "🌐"; IconColor = "#FBBF24"; BoxBg = if ($global:isDark) { "#1A1E26" } else { "#F1F5F9" }; BoxBorder = "#E2E8F0"
+            IsLogo = $true; LogoFile = "3840px-Google_Chrome_icon_Februa.png"; Group = "Web Tarayıcıları"; Paths = @((Join-Path $chromeData "Default\Cache"), (Join-Path $chromeData "Default\Code Cache")); Filter = "*"; Type = "Normal"
+            IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+        })
     }
 
-    # Microsoft Edge
     $edgeData = Join-Path $env:LOCALAPPDATA "Microsoft\Edge\User Data"
     if (Test-Path $edgeData) {
-        $browserCategories += @{
-            Id = "EdgeCache"; Title = "Microsoft Edge Önbelleği"; Desc = "Microsoft Edge web tarayıcısının geçici sayfaları ve medya verileri.";
-            Icon = "🌐"; LogoFile = "Microsoft_Edge_logo_2019.png"; Group = "Web Tarayıcıları";
-            Paths = @((Join-Path $edgeData "Default\Cache"), (Join-Path $edgeData "Default\Code Cache")); Type = "FolderFiles"
-        }
+        [void]$categories.Add(@{
+            Id = "EdgeCache"; Title = "Microsoft Edge Önbelleği"; Desc = "Microsoft Edge web tarayıcısının geçici internet önbellek dosyaları"
+            Icon = "🌐"; IconColor = "#38BDF8"; BoxBg = if ($global:isDark) { "#1A1E26" } else { "#F1F5F9" }; BoxBorder = "#E2E8F0"
+            IsLogo = $true; LogoFile = "Microsoft_Edge_logo_2019.png"; Group = "Web Tarayıcıları"; Paths = @((Join-Path $edgeData "Default\Cache"), (Join-Path $edgeData "Default\Code Cache")); Filter = "*"; Type = "Normal"
+            IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+        })
     }
 
-    # Mozilla Firefox
     $firefoxData = Join-Path $env:APPDATA "Mozilla\Firefox"
     if (Test-Path $firefoxData) {
-        $browserCategories += @{
-            Id = "FirefoxCache"; Title = "Mozilla Firefox Önbelleği"; Desc = "Mozilla Firefox tarayıcısı profil önbelleği (cache2).";
-            Icon = "🌐"; LogoFile = "Firefox_logo,_2017.png"; Group = "Web Tarayıcıları";
-            Paths = @((Join-Path $env:LOCALAPPDATA "Mozilla\Firefox\Profiles")); Type = "Firefox"
-        }
+        [void]$categories.Add(@{
+            Id = "FirefoxCache"; Title = "Mozilla Firefox Önbelleği"; Desc = "Mozilla Firefox tarayıcısı profil önbellekleri"
+            Icon = "🌐"; IconColor = "#FB923C"; BoxBg = if ($global:isDark) { "#1A1E26" } else { "#F1F5F9" }; BoxBorder = "#E2E8F0"
+            IsLogo = $true; LogoFile = "Firefox_logo,_2017.png"; Group = "Web Tarayıcıları"; Paths = @((Join-Path $env:LOCALAPPDATA "Mozilla\Firefox\Profiles")); Filter = "*"; Type = "Firefox"
+            IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+        })
     }
 
-    # Brave Browser
     $braveData = Join-Path $env:LOCALAPPDATA "BraveSoftware\Brave-Browser\User Data"
     if (Test-Path $braveData) {
-        $browserCategories += @{
-            Id = "BraveCache"; Title = "Brave Tarayıcı Önbelleği"; Desc = "Brave tarayıcısının web önbellekleri ve indirme kalıntıları.";
-            Icon = "🌐"; LogoFile = "brave.png"; Group = "Web Tarayıcıları";
-            Paths = @((Join-Path $braveData "Default\Cache"), (Join-Path $braveData "Default\Code Cache")); Type = "FolderFiles"
-        }
+        [void]$categories.Add(@{
+            Id = "BraveCache"; Title = "Brave Tarayıcı Önbelleği"; Desc = "Brave tarayıcısının web önbellekleri ve indirme geçmişi parçaları"
+            Icon = "🦁"; IconColor = "#F97316"; BoxBg = if ($global:isDark) { "#2B1208" } else { "#FFEDD5" }; BoxBorder = "#F97316"
+            IsLogo = $true; LogoFile = "brave.png"; Group = "Web Tarayıcıları"; Paths = @((Join-Path $braveData "Default\Cache")); Filter = "*"; Type = "Normal"
+            IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+        })
     }
 
-    # Opera
     $operaData = Join-Path $env:APPDATA "Opera Software"
     if (Test-Path $operaData) {
-        $browserCategories += @{
-            Id = "OperaCache"; Title = "Opera Tarayıcı Önbelleği"; Desc = "Opera web tarayıcısının önbellek ve geçici verileri.";
-            Icon = "🌐"; LogoFile = "opera_browser_logo_icon_152972.png"; Group = "Web Tarayıcıları";
-            Paths = @((Join-Path $env:LOCALAPPDATA "Opera Software\Opera Stable\Cache"), (Join-Path $env:APPDATA "Opera Software\Opera Stable\Cache")); Type = "FolderFiles"
-        }
+        [void]$categories.Add(@{
+            Id = "OperaCache"; Title = "Opera Tarayıcı Önbelleği"; Desc = "Opera tarayıcısının web önbellekleri"
+            Icon = "🌐"; IconColor = "#EF4444"; BoxBg = if ($global:isDark) { "#1A1E26" } else { "#F1F5F9" }; BoxBorder = "#E2E8F0"
+            IsLogo = $true; LogoFile = "opera_browser_logo_icon_152972.png"; Group = "Web Tarayıcıları"; Paths = @((Join-Path $env:LOCALAPPDATA "Opera Software\Opera Stable\Cache")); Filter = "*"; Type = "Normal"
+            IsChecked = $true; ChkBorder = $null; ChkMark = $null; BadgeBorder = $null; BadgeTxt = $null; CountTxt = $null; ScannedBytes = 0.0; ScannedFiles = 0
+        })
     }
 
-    $categories = @($systemCategories + $browserCategories)
-
-    # POPULATE UI ROWS
+    # BUILD CATEGORY ROW CONTROLS
     foreach ($cat in $categories) {
         $rowB = New-Object System.Windows.Controls.Border
-        $rowB.Background = if ($global:isDark) { Brush("#131B26") } else { Brush("#FFFFFF") }
+        $rowB.Background = if ($global:isDark) { Brush("#111722") } else { Brush("#FFFFFF") }
         $rowB.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
         $rowB.BorderThickness = New-Object System.Windows.Thickness(1)
         $rowB.CornerRadius = New-Object System.Windows.CornerRadius(10)
-        $rowB.Padding = New-Object System.Windows.Thickness(12, 10, 12, 10)
+        $rowB.Padding = New-Object System.Windows.Thickness(14, 11, 14, 11)
         $rowB.Margin = New-Object System.Windows.Thickness(0, 0, 0, 8)
+        $rowB.Cursor = "Hand"
 
         $rowGrid = New-Object System.Windows.Controls.Grid
         $rc0 = New-Object System.Windows.Controls.ColumnDefinition; $rc0.Width = [System.Windows.GridLength]::Auto
@@ -5811,123 +5927,176 @@ function Show-DiskCleanerModal {
         [void]$rowGrid.ColumnDefinitions.Add($rc2)
         [void]$rowGrid.ColumnDefinitions.Add($rc3)
 
-        $chk = New-Object System.Windows.Controls.CheckBox
-        $chk.IsChecked = $true
-        $chk.VerticalAlignment = "Center"
-        $chk.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
-        $cat.Chk = $chk
-        [System.Windows.Controls.Grid]::SetColumn($chk, 0)
-        [void]$rowGrid.Children.Add($chk)
+        # 1. Custom Sleek Checkbox
+        $chkBorder = New-Object System.Windows.Controls.Border
+        $chkBorder.Width = 20; $chkBorder.Height = 20
+        $chkBorder.CornerRadius = New-Object System.Windows.CornerRadius(6)
+        $chkBorder.Background = Brush("#0284C7")
+        $chkBorder.BorderBrush = Brush("#38BDF8")
+        $chkBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
+        $chkBorder.Cursor = "Hand"
+        $chkBorder.VerticalAlignment = "Center"
+        $chkBorder.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
 
-        # İkon / Logo Kutusu: Sistem öğeleri için eski şık ikon kutusu (Resim 3), Tarayıcılar için resmi logolar (Resim 4)
+        $chkMark = New-Object System.Windows.Controls.TextBlock
+        $chkMark.Text = "✓"
+        $chkMark.FontSize = 11.5
+        $chkMark.FontWeight = "Bold"
+        $chkMark.HorizontalAlignment = "Center"
+        $chkMark.VerticalAlignment = "Center"
+        $chkMark.Foreground = Brush("#FFFFFF")
+        $chkBorder.Child = $chkMark
+
+        $cat.ChkBorder = $chkBorder
+        $cat.ChkMark = $chkMark
+        [System.Windows.Controls.Grid]::SetColumn($chkBorder, 0)
+        [void]$rowGrid.Children.Add($chkBorder)
+
+        # 2. Vibrant Colored Icon Box (or Official Browser Logo)
         $icoB = New-Object System.Windows.Controls.Border
-        $icoB.Width = 36; $icoB.Height = 36
-        $icoB.CornerRadius = New-Object System.Windows.CornerRadius(8)
-        $icoB.Background = if ($global:isDark) { Brush("#1A2332") } else { Brush("#F1F5F9") }
+        $icoB.Width = 38; $icoB.Height = 38
+        $icoB.CornerRadius = New-Object System.Windows.CornerRadius(9)
         $icoB.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+        $icoB.VerticalAlignment = "Center"
+        $icoB.Background = Brush($cat.BoxBg)
+        $icoB.BorderBrush = Brush($cat.BoxBorder)
+        $icoB.BorderThickness = New-Object System.Windows.Thickness(1)
 
         $logoLoaded = $false
-        if ($cat.LogoFile -and $global:localLogosDir) {
-            $fullLogoPath = Join-Path $global:localLogosDir $cat.LogoFile
-            if (Test-Path $fullLogoPath) {
-                try {
-                    $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-                    $bmp.BeginInit()
-                    $bmp.UriSource = [Uri]$fullLogoPath
-                    $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
-                    $bmp.EndInit()
-                    $bmp.Freeze()
-
-                    $img = New-Object System.Windows.Controls.Image
-                    $img.Width = 22; $img.Height = 22
-                    $img.Source = $bmp
-                    $img.HorizontalAlignment = "Center"
-                    $img.VerticalAlignment = "Center"
-                    [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($img, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-                    $icoB.Child = $img
-                    $logoLoaded = $true
-                } catch {}
-            }
+        $fullLogoPath = if ($cleanerLogosDir -and $cat.LogoFile) { Join-Path $cleanerLogosDir $cat.LogoFile } else { "" }
+        if ($fullLogoPath -and (Test-Path $fullLogoPath)) {
+            try {
+                $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
+                $bmp.BeginInit()
+                $bmp.UriSource = [Uri]$fullLogoPath
+                $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad
+                $bmp.EndInit()
+                $bmp.Freeze()
+                $img = New-Object System.Windows.Controls.Image
+                $img.Width = 24; $img.Height = 24
+                $img.Source = $bmp
+                $img.HorizontalAlignment = "Center"; $img.VerticalAlignment = "Center"
+                $icoB.Child = $img
+                $logoLoaded = $true
+            } catch {}
         }
         if (-not $logoLoaded) {
-            $icoTxt = New-Object System.Windows.Controls.TextBlock
-            $icoTxt.Text = $cat.Icon
-            $icoTxt.FontSize = 17
-            $icoTxt.HorizontalAlignment = "Center"; $icoTxt.VerticalAlignment = "Center"
-            $icoB.Child = $icoTxt
+            $bTxt = New-Object System.Windows.Controls.TextBlock
+            $bTxt.Text = $cat.Icon
+            $bTxt.FontSize = 18
+            $bTxt.Foreground = Brush($cat.IconColor)
+            $bTxt.HorizontalAlignment = "Center"
+            $bTxt.VerticalAlignment = "Center"
+            $icoB.Child = $bTxt
         }
         [System.Windows.Controls.Grid]::SetColumn($icoB, 1)
         [void]$rowGrid.Children.Add($icoB)
 
-        $infoSp = New-Object System.Windows.Controls.StackPanel
-        $infoSp.VerticalAlignment = "Center"
+        # 3. Titles & Group
+        $cTextSp = New-Object System.Windows.Controls.StackPanel
+        $cTextSp.VerticalAlignment = "Center"
 
-        $titleRow = New-Object System.Windows.Controls.StackPanel
-        $titleRow.Orientation = "Horizontal"
+        $grpT = New-Object System.Windows.Controls.TextBlock
+        $grpT.Text = $cat.Group.ToUpper()
+        $grpT.FontSize = 9.5
+        $grpT.FontWeight = "Bold"
+        $grpT.Foreground = Brush("#38BDF8")
+        $grpT.Margin = New-Object System.Windows.Thickness(0, 0, 0, 1)
+        [void]$cTextSp.Children.Add($grpT)
 
-        $lblTitle = New-Object System.Windows.Controls.TextBlock
-        $lblTitle.Text = $cat.Title
-        $lblTitle.FontSize = 12.5
-        $lblTitle.FontWeight = "Bold"
-        $lblTitle.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-        [void]$titleRow.Children.Add($lblTitle)
+        $cNameT = New-Object System.Windows.Controls.TextBlock
+        $cNameT.Text = $cat.Title
+        $cNameT.FontSize = 13.5
+        $cNameT.FontWeight = "SemiBold"
+        $cNameT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+        [void]$cTextSp.Children.Add($cNameT)
 
-        $grpBadge = New-Object System.Windows.Controls.Border
-        $grpBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
-        $grpBadge.Padding = New-Object System.Windows.Thickness(5, 1, 5, 1)
-        $grpBadge.Margin = New-Object System.Windows.Thickness(8, 0, 0, 0)
-        $grpBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-        $grpTxt = New-Object System.Windows.Controls.TextBlock
-        $grpTxt.Text = $cat.Group
-        $grpTxt.FontSize = 9.5; $grpTxt.FontWeight = "SemiBold"
-        $grpTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
-        $grpBadge.Child = $grpTxt
-        [void]$titleRow.Children.Add($grpBadge)
-        [void]$infoSp.Children.Add($titleRow)
+        $cDescT = New-Object System.Windows.Controls.TextBlock
+        $cDescT.Text = $cat.Desc
+        $cDescT.FontSize = 11
+        $cDescT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+        $cDescT.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
+        [void]$cTextSp.Children.Add($cDescT)
 
-        $lblDesc = New-Object System.Windows.Controls.TextBlock
-        $lblDesc.Text = $cat.Desc
-        $lblDesc.FontSize = 10.5
-        $lblDesc.Foreground = if ($global:isDark) { Brush("#8C9BB0") } else { Brush("#64748B") }
-        $lblDesc.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
-        [void]$infoSp.Children.Add($lblDesc)
+        [System.Windows.Controls.Grid]::SetColumn($cTextSp, 2)
+        [void]$rowGrid.Children.Add($cTextSp)
 
-        [System.Windows.Controls.Grid]::SetColumn($infoSp, 2)
-        [void]$rowGrid.Children.Add($infoSp)
-
+        # 4. Size & Count Badge
         $sizeSp = New-Object System.Windows.Controls.StackPanel
         $sizeSp.HorizontalAlignment = "Right"
         $sizeSp.VerticalAlignment = "Center"
 
         $badgeB = New-Object System.Windows.Controls.Border
         $badgeB.CornerRadius = New-Object System.Windows.CornerRadius(6)
-        $badgeB.Padding = New-Object System.Windows.Thickness(8, 3, 8, 3)
-        $badgeB.Background = if ($global:isDark) { Brush("#1E2838") } else { Brush("#F1F5F9") }
+        $badgeB.Padding = New-Object System.Windows.Thickness(10, 4, 10, 4)
+        $badgeB.Background = if ($global:isDark) { Brush("#1A2234") } else { Brush("#E2E8F0") }
 
         $badgeT = New-Object System.Windows.Controls.TextBlock
         $badgeT.Text = "Hesaplanıyor..."
-        $badgeT.FontSize = 11; $badgeT.FontWeight = "Bold"
-        $badgeT.Foreground = Brush("#8C9BB0")
+        $badgeT.FontSize = 12.5
+        $badgeT.FontWeight = "Bold"
+        $badgeT.Foreground = Brush("#38BDF8")
         $badgeB.Child = $badgeT
-        $cat.BadgeBorder = $badgeB
-        $cat.BadgeTxt = $badgeT
         [void]$sizeSp.Children.Add($badgeB)
 
         $countT = New-Object System.Windows.Controls.TextBlock
-        $countT.Text = "-"
-        $countT.FontSize = 9.5
-        $countT.HorizontalAlignment = "Right"
+        $countT.Text = "0 dosya"
+        $countT.FontSize = 10.5
         $countT.Foreground = if ($global:isDark) { Brush("#64748B") } else { Brush("#94A3B8") }
+        $countT.HorizontalAlignment = "Right"
         $countT.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
-        $cat.CountTxt = $countT
         [void]$sizeSp.Children.Add($countT)
 
         [System.Windows.Controls.Grid]::SetColumn($sizeSp, 3)
         [void]$rowGrid.Children.Add($sizeSp)
 
         $rowB.Child = $rowGrid
-        [void]$itemsSp.Children.Add($rowB)
+        [void]$listSp.Children.Add($rowB)
+
+        $cat.BadgeBorder = $badgeB
+        $cat.BadgeTxt = $badgeT
+        $cat.CountTxt = $countT
+
+        # CLICK TOGGLE CHECKBOX LOGIC
+        $targetCat = $cat
+        $toggleAction = {
+            $targetCat.IsChecked = (-not $targetCat.IsChecked)
+            if ($targetCat.IsChecked) {
+                $targetCat.ChkBorder.Background = Brush("#0284C7")
+                $targetCat.ChkBorder.BorderBrush = Brush("#38BDF8")
+                $targetCat.ChkMark.Visibility = [System.Windows.Visibility]::Visible
+            } else {
+                $targetCat.ChkBorder.Background = Brush("Transparent")
+                $targetCat.ChkBorder.BorderBrush = if ($global:isDark) { Brush("#475569") } else { Brush("#94A3B8") }
+                $targetCat.ChkMark.Visibility = [System.Windows.Visibility]::Collapsed
+            }
+            # Recalculate clean button state
+            $selCount = @($categories | Where-Object { $_.IsChecked }).Count
+            $btnClean.IsEnabled = ($selCount -gt 0 -and $txtTotalJunk.Text -ne "0 B" -and $txtTotalJunk.Text -ne "Hesaplanıyor...")
+        }
+
+        $chkBorder.Add_MouseDown($toggleAction)
+        $rowB.Add_MouseDown($toggleAction)
     }
+
+    # TOGGLE ALL BUTTON
+    $btnSelectAll.Add_Click({
+        $anyChecked = @($categories | Where-Object { $_.IsChecked }).Count -gt 0
+        $newVal = (-not $anyChecked)
+        foreach ($cat in $categories) {
+            $cat.IsChecked = $newVal
+            if ($newVal) {
+                $cat.ChkBorder.Background = Brush("#0284C7")
+                $cat.ChkBorder.BorderBrush = Brush("#38BDF8")
+                $cat.ChkMark.Visibility = [System.Windows.Visibility]::Visible
+            } else {
+                $cat.ChkBorder.Background = Brush("Transparent")
+                $cat.ChkBorder.BorderBrush = if ($global:isDark) { Brush("#475569") } else { Brush("#94A3B8") }
+                $cat.ChkMark.Visibility = [System.Windows.Visibility]::Collapsed
+            }
+        }
+        $btnClean.IsEnabled = ($newVal -and $txtTotalJunk.Text -ne "0 B" -and $txtTotalJunk.Text -ne "Hesaplanıyor...")
+    })
 
     # SCAN ROUTINE
     $ScanCategories = {
@@ -5946,38 +6115,38 @@ function Show-DiskCleanerModal {
             $pTxt.Text = "$($cat.Title) taranıyor..."
             [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
 
-            if ($cat.Type -eq "RecycleBin") {
-                try {
+            try {
+                if ($cat.Type -eq "RecycleBin") {
                     $sh = New-Object -ComObject Shell.Application
                     $rb = $sh.Namespace(10)
                     $catFiles = $rb.Items().Count
-                    foreach ($it in $rb.Items()) { $catSize += $it.Size }
-                } catch {}
-            } elseif ($cat.Type -eq "FilterFiles") {
-                foreach ($p in $cat.Paths) {
-                    if (Test-Path $p) {
-                        $m = Get-ChildItem -Path $p -Filter $cat.Filter -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-                        if ($m -and $m.Sum) { $catSize += $m.Sum; $catFiles += $m.Count }
+                    foreach ($it in $rb.Items()) { $catSize += [double]$it.Size }
+                } elseif ($cat.Type -eq "FilterFiles") {
+                    foreach ($p in $cat.Paths) {
+                        if (Test-Path $p) {
+                            $m = Get-ChildItem -Path $p -Filter $cat.Filter -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+                            if ($m -and $m.Sum) { $catSize += [double]$m.Sum; $catFiles += [int]$m.Count }
+                        }
                     }
-                }
-            } elseif ($cat.Type -eq "Firefox") {
-                foreach ($p in $cat.Paths) {
-                    if (Test-Path $p) {
-                        $c2Dirs = Get-ChildItem -Path $p -Filter "cache2" -Recurse -Directory -Force -ErrorAction SilentlyContinue
-                        foreach ($c2 in $c2Dirs) {
-                            $m = Get-ChildItem -Path $c2.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-                            if ($m -and $m.Sum) { $catSize += $m.Sum; $catFiles += $m.Count }
+                } elseif ($cat.Type -eq "Firefox") {
+                    foreach ($p in $cat.Paths) {
+                        if (Test-Path $p) {
+                            $c2Dirs = Get-ChildItem -Path $p -Filter "cache2" -Recurse -Directory -Force -ErrorAction SilentlyContinue
+                            foreach ($c2 in $c2Dirs) {
+                                $m = Get-ChildItem -Path $c2.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+                                if ($m -and $m.Sum) { $catSize += [double]$m.Sum; $catFiles += [int]$m.Count }
+                            }
+                        }
+                    }
+                } else {
+                    foreach ($p in $cat.Paths) {
+                        if (Test-Path $p) {
+                            $m = Get-ChildItem -Path $p -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
+                            if ($m -and $m.Sum) { $catSize += [double]$m.Sum; $catFiles += [int]$m.Count }
                         }
                     }
                 }
-            } else {
-                foreach ($p in $cat.Paths) {
-                    if (Test-Path $p) {
-                        $m = Get-ChildItem -Path $p -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-                        if ($m -and $m.Sum) { $catSize += $m.Sum; $catFiles += $m.Count }
-                    }
-                }
-            }
+            } catch {}
 
             $cat.ScannedBytes = $catSize
             $cat.ScannedFiles = $catFiles
@@ -5995,9 +6164,10 @@ function Show-DiskCleanerModal {
                     $cat.BadgeTxt.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
                 } else {
                     $cat.BadgeBorder.Background = if ($global:isDark) { Brush("#1E2838") } else { Brush("#F1F5F9") }
-                    $cat.BadgeTxt.Foreground = if ($global:isDark) { Brush("#8C9BB0") } else { Brush("#64748B") }
+                    $cat.BadgeTxt.Foreground = if ($global:isDark) { Brush("#64748B") } else { Brush("#94A3B8") }
                 }
             }
+            [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
         }
 
         $txtTotalJunk.Text = Format-CleanerBytes $grandTotal
@@ -6009,13 +6179,13 @@ function Show-DiskCleanerModal {
 
     # CLEAN ROUTINE
     $CleanSelected = {
-        $selectedItems = @($categories | Where-Object { $_.Chk.IsChecked })
+        $selectedItems = @($categories | Where-Object { $_.IsChecked })
         if ($selectedItems.Count -eq 0) { return }
 
         $progBorder.Visibility = [System.Windows.Visibility]::Visible
         $btnScan.IsEnabled = $false
         $btnClean.IsEnabled = $false
-        $chkSelectAll.IsEnabled = $false
+        $btnSelectAll.IsEnabled = $false
 
         foreach ($cat in $selectedItems) {
             $pTxt.Text = "$($cat.Title) temizleniyor..."
@@ -6051,7 +6221,7 @@ function Show-DiskCleanerModal {
         [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
         & $ScanCategories
 
-        $chkSelectAll.IsEnabled = $true
+        $btnSelectAll.IsEnabled = $true
         $fHint.Text = "✅ Temizlik tamamlandı! Sistem başarıyla optimize edildi."
         $fHint.Foreground = Brush("#22C55E")
     }
@@ -6063,729 +6233,8 @@ function Show-DiskCleanerModal {
         & $ScanCategories
     })
 
+    $cWin.Content = $gridMain
     [void]$cWin.ShowDialog()
-}
-
-
-
-
-
-
-function Show-DriverManagerModal {
-    $hubWin = New-Object System.Windows.Window
-    $global:currentToolsWin = $hubWin
-    $hubWin.Title = "Sürücü & Aygıt Yöneticisi (Driver & Device Manager Hub)"
-    $hubWin.Width = 1140
-    $hubWin.Height = 760
-    $hubWin.MinHeight = 650
-    $hubWin.MinWidth = 950
-    $hubWin.WindowStartupLocation = "CenterOwner"
-    try { if ($window -and $window.IsVisible) { $hubWin.Owner = $window } } catch {}
-    $hubWin.Background = if ($global:isDark) { Brush("#0B0E14") } else { Brush("#F0F2F5") }
-    $hubWin.Foreground = if ($global:isDark) { Brush("#F3F4F6") } else { Brush("#0F172A") }
-    $hubWin.Add_Closed({ $global:currentToolsWin = $null })
-
-    # Modern Custom ScrollBar Dictionary Injection (matching main window theme)
-    $thumbColor = if ($global:isDark) { "#334155" } else { "#CBD5E1" }
-    $thumbHover = if ($global:isDark) { "#475569" } else { "#94A3B8" }
-    $scrollStyleXaml = @"
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <SolidColorBrush x:Key="HubScrollThumb" Color="$thumbColor"/>
-    <SolidColorBrush x:Key="HubScrollThumbHover" Color="$thumbHover"/>
-    <Style TargetType="{x:Type ScrollBar}">
-        <Setter Property="Stylus.IsPressAndHoldEnabled" Value="false"/>
-        <Setter Property="Stylus.IsFlicksEnabled" Value="false"/>
-        <Setter Property="Width" Value="8"/>
-        <Setter Property="MinWidth" Value="8"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="{x:Type ScrollBar}">
-                    <Grid x:Name="Bg" SnapsToDevicePixels="true" Background="Transparent">
-                        <Track x:Name="PART_Track" IsDirectionReversed="true">
-                            <Track.DecreaseRepeatButton>
-                                <RepeatButton Command="{x:Static ScrollBar.LineUpCommand}" Opacity="0" Focusable="false"/>
-                            </Track.DecreaseRepeatButton>
-                            <Track.IncreaseRepeatButton>
-                                <RepeatButton Command="{x:Static ScrollBar.LineDownCommand}" Opacity="0" Focusable="false"/>
-                            </Track.IncreaseRepeatButton>
-                            <Track.Thumb>
-                                <Thumb Margin="1,0,1,0">
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="{x:Type Thumb}">
-                                            <Border x:Name="thumbBorder" Background="{DynamicResource HubScrollThumb}" CornerRadius="4"/>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="true">
-                                                    <Setter TargetName="thumbBorder" Property="Background" Value="{DynamicResource HubScrollThumbHover}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
-                        </Track>
-                    </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-</ResourceDictionary>
-"@
-    try {
-        $resDict = [System.Windows.Markup.XamlReader]::Parse($scrollStyleXaml)
-        $hubWin.Resources.MergedDictionaries.Add($resDict)
-    } catch {}
-
-    $rootGrid = New-Object System.Windows.Controls.Grid
-    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
-    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = [System.Windows.GridLength]::Auto
-    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto
-    $r3 = New-Object System.Windows.Controls.RowDefinition; $r3.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
-    [void]$rootGrid.RowDefinitions.Add($r0); [void]$rootGrid.RowDefinitions.Add($r1); [void]$rootGrid.RowDefinitions.Add($r2); [void]$rootGrid.RowDefinitions.Add($r3)
-
-    # --- ROW 0: HEADER & ACTIONS ---
-    $headerGrid = New-Object System.Windows.Controls.Grid
-    $headerGrid.Margin = New-Object System.Windows.Thickness(24, 18, 24, 12)
-    $hc0 = New-Object System.Windows.Controls.ColumnDefinition; $hc0.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
-    $hc1 = New-Object System.Windows.Controls.ColumnDefinition; $hc1.Width = [System.Windows.GridLength]::Auto
-    [void]$headerGrid.ColumnDefinitions.Add($hc0); [void]$headerGrid.ColumnDefinitions.Add($hc1)
-
-    $titleSp = New-Object System.Windows.Controls.StackPanel
-    $t1 = New-Object System.Windows.Controls.TextBlock; $t1.Text = "🚗  Sürücü & Aygıt Yöneticisi"; $t1.FontSize = 19; $t1.FontWeight = "Bold"; $t1.Foreground = if ($global:isDark) { Brush("#FFFFFF") } else { Brush("#0F172A") }
-    $t2 = New-Object System.Windows.Controls.TextBlock; $t2.Text = "Tüm donanım sürücülerinizi anlaşılır Türkçe açıklamalarıyla görüntüleyin, kategori bazlı yedekleyin veya yönetin."; $t2.FontSize = 11; $t2.Foreground = Brush("#8C9BB0"); $t2.Margin = New-Object System.Windows.Thickness(0,3,0,0)
-    [void]$titleSp.Children.Add($t1); [void]$titleSp.Children.Add($t2)
-    [System.Windows.Controls.Grid]::SetColumn($titleSp, 0); [void]$headerGrid.Children.Add($titleSp)
-
-    function New-HubBtn([string]$text, [string]$bg, [scriptblock]$action) {
-        $b = New-Object System.Windows.Controls.Button
-        $b.Content = $text
-        $b.Height = 35
-        $b.Padding = New-Object System.Windows.Thickness(12,0,12,0)
-        $b.Margin = New-Object System.Windows.Thickness(5,0,0,0)
-        $b.Background = Brush($bg)
-        $b.Foreground = Brush("#FFFFFF")
-        $b.FontWeight = "SemiBold"
-        $b.FontSize = 11
-        $b.BorderThickness = New-Object System.Windows.Thickness(0)
-        $b.Cursor = "Hand"
-        $tpl = '<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="b" Background="{TemplateBinding Background}" CornerRadius="17" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,0,10,0"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.88"/></Trigger></ControlTemplate.Triggers></ControlTemplate>'
-        $b.Template = [System.Windows.Markup.XamlReader]::Parse($tpl)
-        if ($action) { $b.Add_Click($action) }
-        return $b
-    }
-
-    # Modern Vector Icon Helpers
-    function script:New-VectorPowerIcon([string]$stroke = "#FFFFFF") {
-        $xaml = @"
-<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="14" Height="14">
-    <Path Data="M 7,1.5 L 7,6 M 4.4,3.4 A 4.5,4.5 0 1,0 9.6,3.4" Stroke="$stroke" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-</Canvas>
-"@
-        return [System.Windows.Markup.XamlReader]::Parse($xaml)
-    }
-
-    function script:New-VectorDownloadIcon([string]$stroke = "#FFFFFF") {
-        $xaml = @"
-<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="14" Height="14">
-    <Path Data="M 7,1.5 L 7,8.5 M 4.2,6 L 7,8.8 L 9.8,6 M 2.5,11.5 L 11.5,11.5" Stroke="$stroke" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-</Canvas>
-"@
-        return [System.Windows.Markup.XamlReader]::Parse($xaml)
-    }
-
-    # Sleek Circular Action Button (32x32) supporting text or vector elements
-    function New-CircularBtn($iconOrElement, [string]$bg, [string]$tooltip, [scriptblock]$action) {
-        $b = New-Object System.Windows.Controls.Button
-        if ($iconOrElement -is [System.Windows.UIElement]) {
-            $b.Content = $iconOrElement
-        } else {
-            $b.Content = $iconOrElement
-            $b.FontSize = 13
-            $b.FontWeight = "Bold"
-        }
-        $b.Width = 32
-        $b.Height = 32
-        $b.Margin = New-Object System.Windows.Thickness(3,0,3,0)
-        $b.Background = Brush($bg)
-        $b.Foreground = Brush("#FFFFFF")
-        $b.BorderThickness = New-Object System.Windows.Thickness(0)
-        $b.Cursor = "Hand"
-        $b.ToolTip = $tooltip
-        $tpl = '<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="b" Background="{TemplateBinding Background}" CornerRadius="16" SnapsToDevicePixels="True"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.82"/></Trigger></ControlTemplate.Triggers></ControlTemplate>'
-        $b.Template = [System.Windows.Markup.XamlReader]::Parse($tpl)
-        if ($action) { $b.Add_Click($action) }
-        return $b
-    }
-
-    $topBtns = New-Object System.Windows.Controls.StackPanel
-    $topBtns.Orientation = "Horizontal"; $topBtns.VerticalAlignment = "Center"
-
-    # List of all card state objects for robust tracking
-    $script:allDriverCardStates = New-Object 'System.Collections.Generic.List[psobject]'
-
-    function script:Update-HubSelectionSummary {
-        if (-not $script:allDriverCardStates) { return }
-        $selCount = @($script:allDriverCardStates | Where-Object { $_.IsSelected }).Count
-        if ($script:hubBtnBackup) {
-            $script:hubBtnBackup.Content = "💾 Seçilenleri Yedekle ($selCount)"
-        }
-
-        $allVisible = @($script:allDriverCardStates | Where-Object { $_.Card -and $_.Card.Visibility -eq [System.Windows.Visibility]::Visible })
-        $allSel = ($allVisible.Count -gt 0 -and @($allVisible | Where-Object { -not $_.IsSelected }).Count -eq 0)
-        if ($script:hubBtnSelectAll) {
-            if ($allSel) {
-                $script:hubBtnSelectAll.Content = "✕ Seçimi Kaldır"
-                $script:hubBtnSelectAll.Background = Brush("#475569")
-            } else {
-                $script:hubBtnSelectAll.Content = "✓ Tümünü Seç"
-                $script:hubBtnSelectAll.Background = Brush("#334155")
-            }
-        }
-    }
-
-    function script:Toggle-DriverCardSelection($target) {
-        if (-not $target) { return }
-        $state = if ($target.Tag) { $target.Tag } else { $target }
-        if (-not $state -or -not $state.Card) { return }
-
-        $state.IsSelected = -not $state.IsSelected
-        $d = $state.Driver
-        $c = $state.Card
-        if (-not $c) { return }
-
-        if ($state.IsSelected) {
-            # Selected State: Modern cyan/blue border glow + tinted background matching main app!
-            $c.Background = if ($global:isDark) { Brush("#1B293C") } else { Brush("#E0F2FE") }
-            $c.BorderBrush = Brush("#38BDF8")
-            $c.BorderThickness = New-Object System.Windows.Thickness(1.5)
-            if ($state.CheckBorder) { $state.CheckBorder.Background = Brush("#38BDF8") }
-            if ($state.CheckMark) { $state.CheckMark.Visibility = [System.Windows.Visibility]::Visible }
-        } else {
-            # Unselected State
-            if ($d.HasProblem) {
-                $c.Background = if ($global:isDark) { Brush("#231508") } else { Brush("#FEF3C7") }
-                $c.BorderBrush = Brush("#F59E0B")
-                $c.BorderThickness = New-Object System.Windows.Thickness(1.5)
-            } elseif ($d.IsDisabled) {
-                $c.Background = if ($global:isDark) { Brush("#121720") } else { Brush("#F1F5F9") }
-                $c.BorderBrush = Brush("#475569")
-                $c.BorderThickness = New-Object System.Windows.Thickness(1)
-            } else {
-                $c.Background = if ($global:isDark) { Brush("#151C28") } else { Brush("#EDF2F7") }
-                $c.BorderBrush = if ($global:isDark) { Brush("#232E40") } else { Brush("#CBD5E1") }
-                $c.BorderThickness = New-Object System.Windows.Thickness(1)
-            }
-            if ($state.CheckBorder) { $state.CheckBorder.Background = if ($global:isDark) { Brush("#253246") } else { Brush("#CBD5E1") } }
-            if ($state.CheckMark) { $state.CheckMark.Visibility = [System.Windows.Visibility]::Collapsed }
-        }
-
-        Update-HubSelectionSummary
-    }
-
-    $script:hubBtnSelectAll = New-HubBtn "✓ Tümünü Seç" "#334155" {
-        $allVisible = @($script:allDriverCardStates | Where-Object { $_.Card.Visibility -eq [System.Windows.Visibility]::Visible })
-        $anyUnselected = @($allVisible | Where-Object { -not $_.IsSelected }).Count -gt 0
-        $targetState = $anyUnselected
-
-        foreach ($s in $allVisible) {
-            if ($s.IsSelected -ne $targetState) {
-                Toggle-DriverCardSelection $s
-            }
-        }
-    }
-
-    $script:hubBtnBackup = New-HubBtn "💾 Seçilenleri Yedekle (0)" "#16A34A" {
-        $selectedList = @($script:allDriverCardStates | Where-Object { $_.IsSelected } | ForEach-Object { $_.Driver })
-
-        if ($selectedList.Count -eq 0) {
-            Show-ModernAlert "Seçim Yapılmadı" "Lütfen yedeklemek istediğiniz sürücüleri kartlarına tıklayarak seçin veya 'Tümünü Seç' butonunu kullanın." "INFO"
-            return
-        }
-
-        $backupRoot = "C:\DriverBackup"
-        if (-not (Test-Path $backupRoot)) { New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null }
-
-        $catNameMap = @{
-            "Display"   = "Ekran (GPU)"
-            "Media"     = "Ses & Medya"
-            "Net"       = "Ağ & Wi-Fi"
-            "Bluetooth" = "Bluetooth"
-            "Storage"   = "Depolama & Disk"
-            "System"    = "Sistem & Yonga Seti"
-            "USB"       = "USB & Çevre Birimleri"
-            "Other"     = "Diğer Aygıtlar"
-        }
-
-        $succ = 0
-        foreach ($d in $selectedList) {
-            $cFolder = if ($catNameMap.ContainsKey($d.Category)) { $catNameMap[$d.Category] } else { "Diğer Aygıtlar" }
-            $catDir = Join-Path $backupRoot $cFolder
-            if (-not (Test-Path $catDir)) { New-Item -ItemType Directory -Path $catDir -Force | Out-Null }
-
-            $safeName = ($d.Name -replace '[^\w\.\-]', '_').Trim('_')
-            if ($safeName.Length -gt 40) { $safeName = $safeName.Substring(0, 40) }
-            $infTag = ($d.InfName -replace '[^\w\.\-]', '_')
-            $drvDir = Join-Path $catDir "$($safeName)_$infTag"
-            if (-not (Test-Path $drvDir)) { New-Item -ItemType Directory -Path $drvDir -Force | Out-Null }
-
-            if ($d.InfName -match '^oem\d+\.inf$') {
-                Start-Process "pnputil.exe" -ArgumentList "/export-driver $($d.InfName) `"$drvDir`"" -Wait -NoNewWindow
-                $succ++
-            } else {
-                $infoTxt = "Cihaz Adı: $($d.Name)`nTür: $($d.FriendlyBadge)`nAçıklama: $($d.FriendlyDesc)`nINF Dosyası: $($d.InfName)`nÜretici: $($d.Provider)`nSürüm: $($d.Version)`nDonanım Kimliği: $($d.HardwareID)`nAygıt Kimliği: $($d.InstanceId)"
-                [System.IO.File]::WriteAllText((Join-Path $drvDir "Aygit_Bilgisi.txt"), $infoTxt, [System.Text.Encoding]::UTF8)
-                $succ++
-            }
-        }
-
-        Show-ModernAlert "Yedekleme Tamamlandı" "$succ adet sürücü/aygıt kategorilerine göre '$backupRoot' klasörüne başarıyla yedeklendi!" "OK"
-        Start-Process "explorer.exe" -ArgumentList "`"$backupRoot`""
-    }
-
-    $btnScanHardware = New-HubBtn "🔍 Donanımları Tara" "#0284C7" {
-        Start-Process "pnputil.exe" -ArgumentList "/scan-devices" -Wait -NoNewWindow
-        Show-ModernAlert "Donanım Taraması" "Donanım değişiklikleri taraması tamamlandı!" "OK"
-        & $script:refreshHub
-    }
-
-    $btnInstallInf = New-HubBtn "📥 Sürücü Kur (.INF)" "#2563EB" {
-        $ofd = New-Object Microsoft.Win32.OpenFileDialog
-        $ofd.Filter = "Sürücü Dosyası (*.inf)|*.inf"
-        $ofd.Title = "Kurulacak Sürücü Dosyasını (.INF) Seçin"
-        if ($ofd.ShowDialog() -eq $true) {
-            $path = $ofd.FileName
-            Start-Process "pnputil.exe" -ArgumentList "/add-driver `"$path`" /install" -Wait
-            Show-ModernAlert "Sürücü Kurulumu" "Sürücü kurulum komutu tamamlandı!`nDosya: $path" "OK"
-            & $script:refreshHub
-        }
-    }
-
-    $btnDevMgmt = New-HubBtn "⚙ Aygıt Yöneticisi" "#475569" {
-        Start-Process "devmgmt.msc"
-    }
-
-    [void]$topBtns.Children.Add($script:hubBtnSelectAll)
-    [void]$topBtns.Children.Add($script:hubBtnBackup)
-    [void]$topBtns.Children.Add($btnScanHardware)
-    [void]$topBtns.Children.Add($btnInstallInf)
-    [void]$topBtns.Children.Add($btnDevMgmt)
-    [System.Windows.Controls.Grid]::SetColumn($topBtns, 1)
-    [void]$headerGrid.Children.Add($topBtns)
-    [System.Windows.Controls.Grid]::SetRow($headerGrid, 0)
-    [void]$rootGrid.Children.Add($headerGrid)
-
-    # --- ROW 1: SEARCH & TABS ---
-    $filterSp = New-Object System.Windows.Controls.StackPanel
-    $filterSp.Margin = New-Object System.Windows.Thickness(24, 0, 24, 8)
-
-    $searchBorder = New-Object System.Windows.Controls.Border
-    $searchBorder.Height = 36
-    $searchBorder.Background = if ($global:isDark) { Brush("#151C28") } else { Brush("#FFFFFF") }
-    $searchBorder.BorderBrush = if ($global:isDark) { Brush("#232E40") } else { Brush("#CBD5E1") }
-    $searchBorder.BorderThickness = New-Object System.Windows.Thickness(1)
-    $searchBorder.CornerRadius = New-Object System.Windows.CornerRadius(18)
-    $searchBorder.Padding = New-Object System.Windows.Thickness(14,0,14,0)
-    $searchBorder.Margin = New-Object System.Windows.Thickness(0,0,0,8)
-
-    $txtSearch = New-Object System.Windows.Controls.TextBox
-    $txtSearch.Background = Brush("Transparent")
-    $txtSearch.Foreground = if ($global:isDark) { Brush("#FFFFFF") } else { Brush("#0F172A") }
-    $txtSearch.CaretBrush = Brush("#FFFFFF")
-    $txtSearch.BorderThickness = New-Object System.Windows.Thickness(0)
-    $txtSearch.VerticalContentAlignment = "Center"
-    $txtSearch.FontSize = 11.5
-    $searchBorder.Child = $txtSearch
-    [void]$filterSp.Children.Add($searchBorder)
-
-    # Tabs
-    $tabSp = New-Object System.Windows.Controls.WrapPanel
-    $tabCategories = @(
-        @{ Key="All";      Title="🌐 Tümü" },
-        @{ Key="Problems"; Title="⚠️ Sorunlu Aygıtlar" },
-        @{ Key="Display";  Title="🖥️ Ekran (GPU)" },
-        @{ Key="Media";    Title="🔊 Ses & Medya" },
-        @{ Key="Net";      Title="🌐 Ağ & Wi-Fi" },
-        @{ Key="Bluetooth";Title="📶 Bluetooth" },
-        @{ Key="Storage";  Title="💾 Depolama" },
-        @{ Key="System";   Title="⚙️ Sistem & Yonga" },
-        @{ Key="USB";      Title="🔌 USB & Donanım" },
-        @{ Key="Other";    Title="📦 Diğer" }
-    )
-
-    $script:activeHubCategory = "All"
-    $tabBtnMap = @{}
-
-    foreach ($tc in $tabCategories) {
-        $tBtn = New-Object System.Windows.Controls.Button
-        $tBtn.Content = $tc.Title
-        $tBtn.Height = 30
-        $tBtn.Padding = New-Object System.Windows.Thickness(12,0,12,0)
-        $tBtn.Margin = New-Object System.Windows.Thickness(0,0,6,6)
-        $tBtn.FontSize = 11
-        $tBtn.FontWeight = "SemiBold"
-        $tBtn.Cursor = "Hand"
-        $tBtn.BorderThickness = New-Object System.Windows.Thickness(0)
-        $tBtn.Background = if ($tc.Key -eq "All") { Brush("#2563EB") } elseif ($tc.Key -eq "Problems") { Brush("#7C2D12") } else { Brush("Transparent") }
-        $tBtn.Foreground = if ($tc.Key -eq "All") { Brush("#FFFFFF") } elseif ($tc.Key -eq "Problems") { Brush("#FDBA74") } else { Brush("#8C9BB0") }
-        $tBtnTpl = '<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="tb" Background="{TemplateBinding Background}" CornerRadius="15"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,0,10,0"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="tb" Property="Opacity" Value="0.85"/></Trigger></ControlTemplate.Triggers></ControlTemplate>'
-        $tBtn.Template = [System.Windows.Markup.XamlReader]::Parse($tBtnTpl)
-
-        $catKey = $tc.Key
-        $tBtn.Add_Click({
-            param($s, $e)
-            $script:activeHubCategory = $s.Tag
-            foreach ($k in $tabBtnMap.Keys) {
-                if ($k -eq "Problems") {
-                    $tabBtnMap[$k].Background = Brush("#7C2D12")
-                    $tabBtnMap[$k].Foreground = Brush("#FDBA74")
-                } else {
-                    $tabBtnMap[$k].Background = Brush("Transparent")
-                    $tabBtnMap[$k].Foreground = Brush("#8C9BB0")
-                }
-            }
-            $s.Background = if ($s.Tag -eq "Problems") { Brush("#EA580C") } else { Brush("#2563EB") }
-            $s.Foreground = Brush("#FFFFFF")
-            & $script:filterHubCards
-        })
-        $tBtn.Tag = $catKey
-        $tabBtnMap[$catKey] = $tBtn
-        [void]$tabSp.Children.Add($tBtn)
-    }
-    [void]$filterSp.Children.Add($tabSp)
-    [System.Windows.Controls.Grid]::SetRow($filterSp, 1)
-    [void]$rootGrid.Children.Add($filterSp)
-
-    # --- ROW 2: INFO ---
-    $infoSp = New-Object System.Windows.Controls.StackPanel
-    $infoSp.Margin = New-Object System.Windows.Thickness(24, 0, 24, 6)
-    $lblCount = New-Object System.Windows.Controls.TextBlock
-    $lblCount.Text = "Sürücüler ve aygıtlar taranıyor..."
-    $lblCount.FontSize = 10.5
-    $lblCount.Foreground = Brush("#8C9BB0")
-    [void]$infoSp.Children.Add($lblCount)
-    [System.Windows.Controls.Grid]::SetRow($infoSp, 2)
-    [void]$rootGrid.Children.Add($infoSp)
-
-    # --- ROW 3: CARDS ---
-    $scroll = New-Object System.Windows.Controls.ScrollViewer
-    $scroll.Margin = New-Object System.Windows.Thickness(20, 0, 20, 14)
-    $scroll.VerticalScrollBarVisibility = "Auto"
-    $scroll.HorizontalScrollBarVisibility = "Disabled"
-
-    $driverGrid = New-Object System.Windows.Controls.Primitives.UniformGrid
-    $driverGrid.Columns = 2
-    $driverGrid.VerticalAlignment = "Top"
-    $scroll.Content = $driverGrid
-    [System.Windows.Controls.Grid]::SetRow($scroll, 3)
-    [void]$rootGrid.Children.Add($scroll)
-
-    $script:filterHubCards = {
-        $q = $txtSearch.Text.Trim().ToLowerInvariant()
-        $visCount = 0
-        foreach ($s in $script:allDriverCardStates) {
-            $d = $s.Driver
-            $catMatch = if ($script:activeHubCategory -eq "All") { $true }
-                        elseif ($script:activeHubCategory -eq "Problems") { $d.HasProblem }
-                        else { $d.Category -eq $script:activeHubCategory }
-
-            $textMatch = ([string]::IsNullOrWhiteSpace($q) -or
-                $d.Name.ToLowerInvariant().Contains($q) -or
-                $d.Provider.ToLowerInvariant().Contains($q) -or
-                $d.InfName.ToLowerInvariant().Contains($q) -or
-                $d.FriendlyBadge.ToLowerInvariant().Contains($q) -or
-                $d.FriendlyDesc.ToLowerInvariant().Contains($q) -or
-                $d.HardwareID.ToLowerInvariant().Contains($q))
-
-            if ($catMatch -and $textMatch) {
-                $s.Card.Visibility = [System.Windows.Visibility]::Visible
-                $visCount++
-            } else {
-                $s.Card.Visibility = [System.Windows.Visibility]::Collapsed
-            }
-        }
-        $lblCount.Text = "$visCount sürücü / aygıt listelendi"
-        Update-HubSelectionSummary
-    }
-
-    $txtSearch.Add_TextChanged({ & $script:filterHubCards })
-
-    $script:refreshHub = {
-        $lblCount.Text = "Sürücüler taranıyor..."
-        $driverGrid.Children.Clear()
-        $script:allDriverCardStates.Clear()
-
-        $drivers = Get-SystemDrivers
-        $problemCount = @($drivers | Where-Object { $_.HasProblem }).Count
-        if ($tabBtnMap.ContainsKey("Problems")) {
-            $tabBtnMap["Problems"].Content = "⚠️ Sorunlu Aygıtlar ($problemCount)"
-        }
-
-        foreach ($d in $drivers) {
-            $card = New-Object System.Windows.Controls.Border
-            $card.Height = 100
-            $card.Margin = New-Object System.Windows.Thickness(4)
-            $card.Padding = New-Object System.Windows.Thickness(12, 8, 12, 8)
-            $card.Cursor = "Hand"
-            
-            if ($d.HasProblem) {
-                $card.Background = if ($global:isDark) { Brush("#231508") } else { Brush("#FEF3C7") }
-                $card.BorderBrush = Brush("#F59E0B")
-                $card.BorderThickness = New-Object System.Windows.Thickness(1.5)
-            } elseif ($d.IsDisabled) {
-                $card.Background = if ($global:isDark) { Brush("#121720") } else { Brush("#F1F5F9") }
-                $card.BorderBrush = Brush("#475569")
-                $card.BorderThickness = New-Object System.Windows.Thickness(1)
-            } else {
-                $card.Background = if ($global:isDark) { Brush("#151C28") } else { Brush("#EDF2F7") }
-                $card.BorderBrush = if ($global:isDark) { Brush("#232E40") } else { Brush("#CBD5E1") }
-                $card.BorderThickness = New-Object System.Windows.Thickness(1)
-            }
-            $card.CornerRadius = New-Object System.Windows.CornerRadius(12)
-
-            $cg = New-Object System.Windows.Controls.Grid
-            $ccChk = New-Object System.Windows.Controls.ColumnDefinition; $ccChk.Width = [System.Windows.GridLength]::Auto
-            $ccIco = New-Object System.Windows.Controls.ColumnDefinition; $ccIco.Width = [System.Windows.GridLength]::Auto
-            $ccInf = New-Object System.Windows.Controls.ColumnDefinition; $ccInf.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
-            $ccAct = New-Object System.Windows.Controls.ColumnDefinition; $ccAct.Width = [System.Windows.GridLength]::Auto
-            [void]$cg.ColumnDefinitions.Add($ccChk); [void]$cg.ColumnDefinitions.Add($ccIco); [void]$cg.ColumnDefinitions.Add($ccInf); [void]$cg.ColumnDefinitions.Add($ccAct)
-
-            # Modern Circular Check Badge (matching main installer app!)
-            $chkBorder = New-Object System.Windows.Controls.Border
-            $chkBorder.Width = 20
-            $chkBorder.Height = 20
-            $chkBorder.CornerRadius = New-Object System.Windows.CornerRadius(6)
-            $chkBorder.Background = if ($global:isDark) { Brush("#253246") } else { Brush("#CBD5E1") }
-            $chkBorder.VerticalAlignment = "Center"
-            $chkBorder.HorizontalAlignment = "Center"
-            $chkBorder.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
-
-            $chkMark = New-Object System.Windows.Controls.TextBlock
-            $chkMark.Text = "✓"
-            $chkMark.FontSize = 11
-            $chkMark.FontWeight = "Bold"
-            $chkMark.HorizontalAlignment = "Center"
-            $chkMark.VerticalAlignment = "Center"
-            $chkMark.Foreground = Brush("#FFFFFF")
-            $chkMark.Visibility = [System.Windows.Visibility]::Collapsed
-            $chkBorder.Child = $chkMark
-            [System.Windows.Controls.Grid]::SetColumn($chkBorder, 0)
-            [void]$cg.Children.Add($chkBorder)
-
-            # Card State Object
-            $cardState = [PSCustomObject]@{
-                Card        = $card
-                Driver      = $d
-                IsSelected  = $false
-                CheckBorder = $chkBorder
-                CheckMark   = $chkMark
-            }
-            [void]$script:allDriverCardStates.Add($cardState)
-            $card.Tag = $cardState
-
-            # Clicking card toggles selection smoothly
-            $card.Add_MouseLeftButtonUp({
-                param($s, $e)
-                Toggle-DriverCardSelection $s
-            })
-
-            # Card Tooltip with full information
-            [System.Windows.Controls.ToolTipService]::SetInitialShowDelay($card, 300)
-            $card.ToolTip = "Seçmek/kaldırmak için tıklayın`n$($d.Name)`n$($d.FriendlyDesc)`nINF: $($d.InfName) • Sürüm: $($d.Version) • Sağlayıcı: $($d.Provider)"
-
-            # Hardware Category / Error Icon
-            $ico = if ($d.HasProblem) { "⚠️" }
-                   elseif ($d.IsDisabled) { "⏸" }
-                   else {
-                       switch ($d.Category) {
-                           "Display"   { "🖥️" }
-                           "Media"     { "🔊" }
-                           "Net"       { "🌐" }
-                           "Bluetooth" { "📶" }
-                           "Storage"   { "💾" }
-                           "System"    { "⚙️" }
-                           "USB"       { "🔌" }
-                           default     { "📦" }
-                       }
-                   }
-
-            $icoBorder = New-Object System.Windows.Controls.Border
-            $icoBorder.Width = 40; $icoBorder.Height = 40
-            $icoBorder.CornerRadius = New-Object System.Windows.CornerRadius(10)
-            $icoBorder.Background = if ($d.HasProblem) { Brush("#78350F") } elseif ($global:isDark) { Brush("#1A2332") } else { Brush("#E2E8F0") }
-            $icoTxt = New-Object System.Windows.Controls.TextBlock; $icoTxt.Text = $ico; $icoTxt.FontSize = 17; $icoTxt.HorizontalAlignment = "Center"; $icoTxt.VerticalAlignment = "Center"
-            $icoBorder.Child = $icoTxt
-            [System.Windows.Controls.Grid]::SetColumn($icoBorder, 1)
-            [void]$cg.Children.Add($icoBorder)
-
-            # Details StackPanel
-            $dsp = New-Object System.Windows.Controls.StackPanel
-            $dsp.Margin = New-Object System.Windows.Thickness(10, 0, 10, 0)
-            $dsp.VerticalAlignment = "Center"
-
-            # Line 1: Title + Friendly Type Badge + Error/Disabled Badge
-            $nameSp = New-Object System.Windows.Controls.StackPanel
-            $nameSp.Orientation = "Horizontal"
-
-            $dName = New-Object System.Windows.Controls.TextBlock
-            $dName.Text = $d.Name
-            $dName.FontWeight = "Bold"
-            $dName.FontSize = 11.5
-            $dName.Foreground = if ($d.HasProblem) { Brush("#F59E0B") } elseif ($global:isDark) { Brush("#FFFFFF") } else { Brush("#0F172A") }
-            $dName.TextTrimming = "CharacterEllipsis"
-            $dName.MaxWidth = 270
-            $dName.ToolTip = "$($d.Name)`nINF: $($d.InfName)"
-            [void]$nameSp.Children.Add($dName)
-
-            if ($d.FriendlyBadge) {
-                $typeBadge = New-Object System.Windows.Controls.Border
-                $typeBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-                $typeBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
-                $typeBadge.Padding = New-Object System.Windows.Thickness(5,1,5,1)
-                $typeBadge.Margin = New-Object System.Windows.Thickness(6,0,0,0)
-                $typeBadge.ToolTip = "Kategori: $($d.FriendlyBadge)"
-                $typeBadgeTxt = New-Object System.Windows.Controls.TextBlock
-                $typeBadgeTxt.Text = $d.FriendlyBadge
-                $typeBadgeTxt.FontSize = 9; $typeBadgeTxt.FontWeight = "SemiBold"
-                $typeBadgeTxt.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
-                $typeBadge.Child = $typeBadgeTxt
-                [void]$nameSp.Children.Add($typeBadge)
-            }
-
-            if ($d.HasProblem) {
-                $probBadge = New-Object System.Windows.Controls.Border
-                $probBadge.Background = Brush("#EF4444")
-                $probBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
-                $probBadge.Padding = New-Object System.Windows.Thickness(5,1,5,1)
-                $probBadge.Margin = New-Object System.Windows.Thickness(4,0,0,0)
-                $probBadge.ToolTip = "Donanım Sorun Kodu: $($d.ProblemCode)"
-                $probTxt = New-Object System.Windows.Controls.TextBlock
-                $probTxt.Text = if ($d.ProblemCode) { $d.ProblemCode } else { "HATA" }
-                $probTxt.FontSize = 9; $probTxt.FontWeight = "Bold"; $probTxt.Foreground = Brush("#FFFFFF")
-                $probBadge.Child = $probTxt
-                [void]$nameSp.Children.Add($probBadge)
-            } elseif ($d.IsDisabled) {
-                $disBadge = New-Object System.Windows.Controls.Border
-                $disBadge.Background = Brush("#64748B")
-                $disBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
-                $disBadge.Padding = New-Object System.Windows.Thickness(5,1,5,1)
-                $disBadge.Margin = New-Object System.Windows.Thickness(4,0,0,0)
-                $disBadge.ToolTip = "Bu aygıt şu anda devre dışı (pasif) durumdadır."
-                $disTxt = New-Object System.Windows.Controls.TextBlock
-                $disTxt.Text = "PASİF"
-                $disTxt.FontSize = 9; $disTxt.FontWeight = "Bold"; $disTxt.Foreground = Brush("#FFFFFF")
-                $disBadge.Child = $disTxt
-                [void]$nameSp.Children.Add($disBadge)
-            }
-            [void]$dsp.Children.Add($nameSp)
-
-            # Line 2: Plain-Language Turkish Description
-            $dDesc = New-Object System.Windows.Controls.TextBlock
-            $dDesc.Text = $d.FriendlyDesc
-            $dDesc.FontSize = 10
-            $dDesc.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
-            $dDesc.Margin = New-Object System.Windows.Thickness(0,2,0,0)
-            $dDesc.TextTrimming = "CharacterEllipsis"
-            $dDesc.MaxWidth = 380
-            $dDesc.ToolTip = $d.FriendlyDesc
-            [void]$dsp.Children.Add($dDesc)
-
-            # Line 3: Technical Details
-            $dSub = New-Object System.Windows.Controls.TextBlock
-            $dSub.Text = "$($d.InfName) • $($d.Version) • $($d.Provider)"
-            $dSub.FontSize = 9
-            $dSub.Foreground = Brush("#64748B")
-            $dSub.Margin = New-Object System.Windows.Thickness(0,2,0,0)
-            $dSub.TextTrimming = "CharacterEllipsis"
-            $dSub.MaxWidth = 380
-            $dSub.ToolTip = "$($d.InfName) • Sürüm: $($d.Version) • Sağlayıcı: $($d.Provider)"
-            [void]$dsp.Children.Add($dSub)
-
-            [System.Windows.Controls.Grid]::SetColumn($dsp, 2)
-            [void]$cg.Children.Add($dsp)
-
-            # --- Modern Circular Icon-Only Action Buttons ---
-            $actSp = New-Object System.Windows.Controls.StackPanel
-            $actSp.Orientation = "Horizontal"
-            $actSp.VerticalAlignment = "Center"
-
-            $driverObj = $d
-
-            # 1. Otomatik Kur / Çöz / İndir Butonu (Modern Vector Download Arrow)
-            if ($driverObj.HasProblem) {
-                $btnSolve = New-CircularBtn (New-VectorDownloadIcon "#FFFFFF") "#2563EB" "Sürücüyü Otomatik İndir / Çöz / Kur" {
-                    param($s, $e)
-                    $e.Handled = $true
-                    $msg = "$($driverObj.Name) aygıtı için otomatik sürücü onarımı ve arama başlatılsın mı?`n`n1. Sistemde donanım değişiklikleri taranacak.`n2. Windows Update isteğe bağlı sürücü güncelleştirmeleri ekranı açılacak.`n3. Donanım kimliği ile internette resmi sürücü aranacak."
-                    $ans = [System.Windows.MessageBox]::Show($msg, "Sürücü Onarımı ve Kurulum", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
-                    if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
-                        Start-Process "pnputil.exe" -ArgumentList "/scan-devices" -Wait -NoNewWindow
-                        Start-Process "ms-settings:windowsupdate-optionalupdates"
-                        if ($driverObj.HardwareID) {
-                            $hwUrl = "https://www.google.com/search?q=" + [System.Uri]::EscapeDataString("$($driverObj.Name) $($driverObj.HardwareID) driver download")
-                            Start-Process $hwUrl
-                        }
-                        & $script:refreshHub
-                    }
-                }
-                [void]$actSp.Children.Add($btnSolve)
-            }
-
-            # 2. Pasife Al (⏻ On-Off Power İkonu) / Aktifleştir (⏻ On-Off Power İkonu)
-            if ($driverObj.InstanceId) {
-                if ($driverObj.IsDisabled) {
-                    $btnToggle = New-CircularBtn (New-VectorPowerIcon "#FFFFFF") "#16A34A" "Aygıtı Yeniden Etkinleştir (Aktif Et)" {
-                        param($s, $e)
-                        $e.Handled = $true
-                        Start-Process "pnputil.exe" -ArgumentList "/enable-device `"$($driverObj.InstanceId)`"" -Wait -NoNewWindow
-                        try { Enable-PnpDevice -InstanceId $driverObj.InstanceId -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-                        Show-ModernAlert "Aygıt Aktifleştirildi" "$($driverObj.Name) aygıtı yeniden etkinleştirildi." "OK"
-                        & $script:refreshHub
-                    }
-                    [void]$actSp.Children.Add($btnToggle)
-                } else {
-                    $btnToggle = New-CircularBtn (New-VectorPowerIcon "#FFFFFF") "#475569" "Aygıtı Pasife Al (Devre Dışı Bırak)" {
-                        param($s, $e)
-                        $e.Handled = $true
-                        $ans = [System.Windows.MessageBox]::Show("$($driverObj.Name) aygıtını pasife almak (devre dışı bırakmak) istediğinize emin misiniz?`n`nDevre dışı bırakıldığında bu donanım çalışmayacaktır.", "Aygıtı Pasife Al", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
-                        if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
-                            Start-Process "pnputil.exe" -ArgumentList "/disable-device `"$($driverObj.InstanceId)`"" -Wait -NoNewWindow
-                            try { Disable-PnpDevice -InstanceId $driverObj.InstanceId -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-                            Show-ModernAlert "Aygıt Pasife Alındı" "$($driverObj.Name) aygıtı devre dışı bırakıldı." "WARN"
-                            & $script:refreshHub
-                        }
-                    }
-                    [void]$actSp.Children.Add($btnToggle)
-                }
-            }
-
-            # 3. Kaldır Butonu (Sil)
-            $btnUninst = New-CircularBtn "✕" "#EF4444" "Sürücüyü / Aygıtı Sistemden Kaldır" {
-                param($s, $e)
-                $e.Handled = $true
-                $ans = [System.Windows.MessageBox]::Show("$($driverObj.Name) ($($driverObj.InfName)) sürücüsünü / aygıtını sistemden kaldırmak istediğinize emin misiniz?`n`nBu işlem sürücüyü Windows sürücü deposundan ve sistemden silecektir.", "Kaldırma Onayı", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
-                if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
-                    if ($driverObj.InfName -match '^oem\d+\.inf$') {
-                        Start-Process "pnputil.exe" -ArgumentList "/delete-driver $($driverObj.InfName) /uninstall /force" -Wait -NoNewWindow
-                    } elseif ($driverObj.InstanceId) {
-                        Start-Process "pnputil.exe" -ArgumentList "/remove-device `"$($driverObj.InstanceId)`"" -Wait -NoNewWindow
-                    }
-                    Show-ModernAlert "Sürücü Kaldırıldı" "$($driverObj.Name) sistemden kaldırıldı." "OK"
-                    & $script:refreshHub
-                }
-            }
-            [void]$actSp.Children.Add($btnUninst)
-
-            [System.Windows.Controls.Grid]::SetColumn($actSp, 3)
-            [void]$cg.Children.Add($actSp)
-
-            $card.Child = $cg
-            [void]$driverGrid.Children.Add($card)
-        }
-        & $script:filterHubCards
-    }
-
-    $hubWin.Content = $rootGrid
-    & $script:refreshHub
-    [void]$hubWin.ShowDialog()
 }
 
 # --- GELİŞMİŞ ARAÇLAR ---
