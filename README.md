@@ -2,6 +2,10 @@
 
 Windows işletim sistemleri için geliştirilmiş, modern Fluent Design arayüzüne sahip gelişmiş toplu yazılım kurulum, yönetim ve sistem optimizasyon aracı.
 
+<p align="center">
+  <img src="assets/preview_main.png" alt="System Manager Pro Ana Arayüz" width="95%">
+</p>
+
 ---
 
 ## ✨ Temel Özellikler
@@ -19,20 +23,30 @@ Windows işletim sistemleri için geliştirilmiş, modern Fluent Design arayüz�
 
 ---
 
+## 📸 Ekran Görüntüleri
+
+<p align="center">
+  <img src="assets/preview_cleaner.png" width="48%" alt="Disk Temizleyici" />
+  &nbsp;
+  <img src="assets/preview_security.png" width="48%" alt="Virüs ve Tehdit Koruması" />
+</p>
+
+---
+
 ## 🛠️ Gereksinimler & Çalıştırma
 
 1. **PowerShell:** Windows PowerShell 5.1 veya üzeri (Yönetici yetkileriyle).
 2. **WinGet:** Windows Paket Yöneticisi (Varsayılan olarak Windows 10/11 ile birlikte gelir).
 3. **Çalıştırma:**
-   `powershell
+   ```powershell
    powershell.exe -ExecutionPolicy Bypass -File .\SystemManagerPro.ps1
-   `
+   ```
 
 ---
 
 ## 📦 Derleme (.exe Yapma)
 
-Uygulamayı bağımsız bir .exe haline getirmek için ps2exe modülü kullanılır:
-`cmd
+Uygulamayı bağımsız bir `.exe` haline getirmek için:
+```cmd
 BUILD_SystemManagerPro_EXE.bat
-`
+```
