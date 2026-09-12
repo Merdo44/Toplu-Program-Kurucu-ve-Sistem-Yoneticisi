@@ -1,0 +1,18 @@
+﻿# Derlenmiş ikili dosyalar
+*.exe
+*.dll
+
+# Geçici ve yedek dosyalar
+*.bak
+*.tmp
+*.log
+user_settings.json
+
+# Node bağımlılıkları
+node_modules/
+
+# IDE & Sistem
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
