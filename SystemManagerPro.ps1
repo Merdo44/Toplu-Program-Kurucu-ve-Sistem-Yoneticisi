@@ -2243,7 +2243,237 @@ function Has-AppUpdate([string]$id) {
     return $false
 }
 
+
+# --- TAŞINABİLİR (PORTABLE/ZIP) VE BAŞLAT MENÜSÜ KISAYOL YÖNETİM SİSTEMİ ---
+$global:portableAppExeMap = @{
+    "Ventoy.Ventoy"                         = @{ ExePatterns = @("Ventoy2Disk.exe", "Ventoy*.exe"); SubDirs = @("Ventoy*", "ventoy*"); PrimaryExe = "Ventoy2Disk.exe" }
+    "Rufus.Rufus"                           = @{ ExePatterns = @("rufus.exe", "rufus-*.exe", "rufus_*.exe"); SubDirs = @("Rufus*"); PrimaryExe = "rufus.exe" }
+    "Wagnardsoft.DisplayDriverUninstaller"  = @{ ExePatterns = @("Display Driver Uninstaller.exe", "DDU.exe"); SubDirs = @("Wagnardsoft*", "DDU*"); PrimaryExe = "Display Driver Uninstaller.exe" }
+    "TeamViewer.TeamViewer.QuickSupport"    = @{ ExePatterns = @("TeamViewerQS.exe", "TeamViewer_QS.exe"); SubDirs = @("TeamViewer*QS*"); PrimaryExe = "TeamViewerQS.exe" }
+    "cagritaskn.SplitWireTurkey"            = @{ ExePatterns = @("SplitWire.exe", "SplitWire-Turkey.exe"); SubDirs = @("SplitWire*"); PrimaryExe = "SplitWire.exe" }
+    "CrystalDewWorld.CrystalDiskInfo"       = @{ ExePatterns = @("DiskInfo64.exe", "DiskInfo32.exe", "DiskInfo.exe", "DiskInfoA64.exe"); SubDirs = @("CrystalDiskInfo*"); PrimaryExe = "DiskInfo64.exe" }
+    "CrystalDewWorld.CrystalDiskMark"       = @{ ExePatterns = @("DiskMark64.exe", "DiskMark32.exe", "DiskMark.exe", "DiskMarkA64.exe"); SubDirs = @("CrystalDiskMark*"); PrimaryExe = "DiskMark64.exe" }
+    "CPUID.CPU-Z"                           = @{ ExePatterns = @("cpuz.exe", "cpuz_x64.exe"); SubDirs = @("CPUID*", "CPU-Z*"); PrimaryExe = "cpuz.exe" }
+    "ALCPU.CoreTemp"                        = @{ ExePatterns = @("Core Temp.exe", "CoreTemp.exe"); SubDirs = @("CoreTemp*"); PrimaryExe = "Core Temp.exe" }
+    "voidtools.Everything"                  = @{ ExePatterns = @("Everything.exe", "Everything64.exe"); SubDirs = @("Everything*"); PrimaryExe = "Everything.exe" }
+    "JAMSoftware.TreeSize.Free"             = @{ ExePatterns = @("TreeSizeFree.exe", "TreeSize.exe"); SubDirs = @("TreeSize*"); PrimaryExe = "TreeSizeFree.exe" }
+    "Giorgiotani.Peazip"                    = @{ ExePatterns = @("peazip.exe"); SubDirs = @("PeaZip*"); PrimaryExe = "peazip.exe" }
+    "Guru3D.Afterburner"                    = @{ ExePatterns = @("MSIAfterburner.exe"); SubDirs = @("MSI Afterburner*"); PrimaryExe = "MSIAfterburner.exe" }
+    "Skillbrains.Lightshot"                 = @{ ExePatterns = @("Lightshot.exe"); SubDirs = @("Skillbrains*", "Lightshot*"); PrimaryExe = "Lightshot.exe" }
+    "Flameshot.Flameshot"                   = @{ ExePatterns = @("flameshot.exe"); SubDirs = @("Flameshot*"); PrimaryExe = "flameshot.exe" }
+    "ShareX.ShareX"                         = @{ ExePatterns = @("ShareX.exe"); SubDirs = @("ShareX*"); PrimaryExe = "ShareX.exe" }
+    "LocalSend.LocalSend"                   = @{ ExePatterns = @("localsend_app.exe", "localsend.exe"); SubDirs = @("LocalSend*"); PrimaryExe = "localsend_app.exe" }
+    "AppWork.JDownloader"                   = @{ ExePatterns = @("JDownloader2.exe", "JDownloader.exe"); SubDirs = @("JDownloader*"); PrimaryExe = "JDownloader2.exe" }
+    "BitTorrent.uTorrent"                   = @{ ExePatterns = @("uTorrent.exe"); SubDirs = @("uTorrent*"); PrimaryExe = "uTorrent.exe" }
+    "Anthropic.ClaudeCode"                   = @{ ExePatterns = @("claude.exe"); SubDirs = @("ClaudeCode*", "Claude*"); PrimaryExe = "claude.exe" }
+    "OpenAI.Codex"                          = @{ ExePatterns = @("codex.exe"); SubDirs = @("Codex*"); PrimaryExe = "codex.exe" }
+}
+
+function Find-AppTargetExecutable([hashtable]$app) {
+    try {
+        if ($app.ExePath -and (Test-Path $app.ExePath)) {
+            return $app.ExePath
+        }
+
+        $appId = $app.Id
+        $appName = $app.Name
+        $cfg = if ($appId -and $global:portableAppExeMap.ContainsKey($appId)) { $global:portableAppExeMap[$appId] } else { $null }
+
+        $patterns = if ($cfg) { $cfg.ExePatterns } else { @("$appName.exe", "$($appId.Split('.')[-1]).exe", "*.exe") }
+        $subDirs = if ($cfg) { $cfg.SubDirs } else { @("*$appId*", "*$appName*") }
+
+        # 1. WinGet Packages klasörü kontrolü
+        $pkgDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+        if (Test-Path $pkgDir) {
+            $matchedDirs = @()
+            if ($appId) {
+                $matchedDirs += Get-ChildItem -Path $pkgDir -Filter "*$appId*" -Directory -ErrorAction SilentlyContinue
+            }
+            foreach ($sd in $subDirs) {
+                $matchedDirs += Get-ChildItem -Path $pkgDir -Filter $sd -Directory -ErrorAction SilentlyContinue
+            }
+            $matchedDirs = $matchedDirs | Select-Object -Unique
+
+            foreach ($md in $matchedDirs) {
+                foreach ($pat in $patterns) {
+                    $found = Get-ChildItem -Path $md.FullName -Filter $pat -Recurse -File -ErrorAction SilentlyContinue |
+                             Where-Object { $_.Name -notmatch 'uninstall|helper|setup|crash|update' } |
+                             Sort-Object Length -Descending | Select-Object -First 1
+                    if ($found) { return $found.FullName }
+                }
+            }
+        }
+
+        # 2. WinGet Links klasörü kontrolü
+        $linksDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"
+        if (Test-Path $linksDir) {
+            foreach ($pat in $patterns) {
+                $found = Get-ChildItem -Path $linksDir -Filter $pat -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($found) { return $found.FullName }
+            }
+        }
+
+        # 3. Genel Program Files & LocalAppData kontrolü
+        $searchRoots = @(
+            $env:ProgramFiles,
+            ${env:ProgramFiles(x86)},
+            $env:LOCALAPPDATA,
+            $env:APPDATA,
+            $env:ProgramData
+        )
+        foreach ($root in $searchRoots) {
+            if ($root -and (Test-Path $root)) {
+                foreach ($sd in $subDirs) {
+                    $candDirs = Get-ChildItem -Path $root -Filter $sd -Directory -ErrorAction SilentlyContinue
+                    foreach ($cd in $candDirs) {
+                        foreach ($pat in $patterns) {
+                            $found = Get-ChildItem -Path $cd.FullName -Filter $pat -File -ErrorAction SilentlyContinue |
+                                     Where-Object { $_.Name -notmatch 'uninstall|helper|setup' } | Select-Object -First 1
+                            if ($found) { return $found.FullName }
+                        }
+                    }
+                }
+            }
+        }
+    } catch {}
+    return $null
+}
+
+function Ensure-AppShortcuts([hashtable]$app, [bool]$createDesktop = $true, [bool]$force = $false) {
+    try {
+        if (-not $app -or $app.Cat -eq 'Runtimes' -or $app.Id -eq 'Google.ChromeRemoteDesktopHost') {
+            return $false
+        }
+
+        $programsPath = [Environment]::GetFolderPath('Programs')
+        $allProgramsPath = [Environment]::GetFolderPath('CommonPrograms')
+        $targetLnk = Join-Path $programsPath "$($app.Name).lnk"
+
+        # Mevcut kısayol var mı ve hedefi geçerli mi?
+        if (-not $force) {
+            $existingLnk = $null
+            if (Test-Path $targetLnk) {
+                $existingLnk = $targetLnk
+            } else {
+                $found = Get-ChildItem -Path $programsPath -Filter "*$($app.Name)*.lnk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                if (-not $found -and (Test-Path $allProgramsPath)) {
+                    $found = Get-ChildItem -Path $allProgramsPath -Filter "*$($app.Name)*.lnk" -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1
+                }
+                if ($found) { $existingLnk = $found.FullName }
+            }
+
+            if ($existingLnk) {
+                $wsh = New-Object -ComObject WScript.Shell
+                $chk = $wsh.CreateShortcut($existingLnk)
+                if ($chk.TargetPath -and (Test-Path $chk.TargetPath)) {
+                    return $true
+                }
+            }
+        }
+
+        # Kısayol yok veya hedefi geçersiz (bozuk) -> Yürütülebilir dosyayı bul
+        $targetExe = Find-AppTargetExecutable $app
+        if (-not $targetExe -or -not (Test-Path $targetExe)) {
+            return $false
+        }
+
+        $wsh = New-Object -ComObject WScript.Shell
+        $sc = $wsh.CreateShortcut($targetLnk)
+        $sc.TargetPath = $targetExe
+        $sc.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
+        $sc.Description = "$($app.Name) Uygulaması"
+
+        # Özel simge varsa ata
+        $iconFile = $null
+        if ($global:localLogosDir -and (Test-Path $global:localLogosDir)) {
+            if ($global:localLogosMap -and $global:localLogosMap.ContainsKey($app.Name)) {
+                foreach ($cand in $global:localLogosMap[$app.Name]) {
+                    $cp = Join-Path $global:localLogosDir $cand
+                    if (Test-Path $cp) { $iconFile = $cp; break }
+                }
+            }
+            if (-not $iconFile) {
+                $icoCand = Join-Path $global:localLogosDir "$($app.Name).ico"
+                if (Test-Path $icoCand) { $iconFile = $icoCand }
+            }
+        }
+        if ($iconFile -and $iconFile.EndsWith(".ico", [System.StringComparison]::OrdinalIgnoreCase)) {
+            $sc.IconLocation = "$iconFile,0"
+        } else {
+            $sc.IconLocation = "$targetExe,0"
+        }
+        $sc.Save()
+
+        # Masaüstü kısayolları
+        if ($createDesktop) {
+            $desktopPaths = @(
+                [Environment]::GetFolderPath('Desktop'),
+                (Join-Path $env:USERPROFILE "OneDrive\Desktop")
+            ) | Select-Object -Unique
+
+            foreach ($dp in $desktopPaths) {
+                if ($dp -and (Test-Path $dp)) {
+                    $deskLnk = Join-Path $dp "$($app.Name).lnk"
+                    $scD = $wsh.CreateShortcut($deskLnk)
+                    $scD.TargetPath = $targetExe
+                    $scD.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
+                    $scD.Description = "$($app.Name) Uygulaması"
+                    if ($iconFile -and $iconFile.EndsWith(".ico", [System.StringComparison]::OrdinalIgnoreCase)) {
+                        $scD.IconLocation = "$iconFile,0"
+                    } else {
+                        $scD.IconLocation = "$targetExe,0"
+                    }
+                    $scD.Save()
+                }
+            }
+        }
+
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Ensure-AllInstalledAppShortcuts {
+    try {
+        $repairedCount = 0
+        foreach ($app in $global:apps) {
+            if (-not $app -or $app.Cat -eq 'Runtimes') { continue }
+            $isInst = Is-AppActuallyInstalled $app.Name $app.Id $app.ExePath $app.RegistryName
+            if ($isInst) {
+                $created = Ensure-AppShortcuts -app $app -createDesktop $false -force $false
+                if ($created) { $repairedCount++ }
+            }
+        }
+        return $repairedCount
+    } catch {
+        return 0
+    }
+}
+
+function Remove-AppShortcuts([string]$appName) {
+    try {
+        if (-not $appName) { return }
+        $cleanName = ($appName -replace '[^\w\s\-]', '').Trim()
+        $dirsToCheck = @(
+            [Environment]::GetFolderPath('Programs'),
+            [Environment]::GetFolderPath('CommonPrograms'),
+            [Environment]::GetFolderPath('Desktop'),
+            [Environment]::GetFolderPath('CommonDesktop'),
+            (Join-Path $env:USERPROFILE "OneDrive\Desktop")
+        )
+        foreach ($d in $dirsToCheck) {
+            if ($d -and (Test-Path $d)) {
+                Get-ChildItem -Path $d -Filter "*$cleanName*.lnk" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                    Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    } catch {}
+}
+
 Refresh-InstalledStatus
+try { [void](Ensure-AllInstalledAppShortcuts) } catch {}
 
 $xamlRaw = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -4872,6 +5102,7 @@ function Trigger-FullStateRefresh {
 
     Start-Sleep -Milliseconds 250
     Refresh-InstalledStatus
+    try { [void](Ensure-AllInstalledAppShortcuts) } catch {}
 
     $global:selectedQueue.Clear()
     Render-Cards
@@ -5864,44 +6095,11 @@ function Invoke-BatchOperation([string]$operation) {
             if ($isSuccess) {
                 $successCount++
 
-                # Otomatik Kısayol Doğrulama ve Oluşturma (Ventoy ve taşınabilir zip paketleri için)
+                # Otomatik Kısayol Yönetimi (Taşınabilir/zip ve masaüstü kısayolları için)
                 if ($operation -eq "Kur") {
-                    try {
-                        $programsPath = [Environment]::GetFolderPath('Programs')
-                        $desktopPath = [Environment]::GetFolderPath('Desktop')
-                        $hasStartLnk = (Get-ChildItem -Path $programsPath -Filter "*$($app.Name)*.lnk" -Recurse -ErrorAction SilentlyContinue).Count -gt 0
-                        $hasDeskLnk  = (Get-ChildItem -Path $desktopPath -Filter "*$($app.Name)*.lnk" -ErrorAction SilentlyContinue).Count -gt 0
-
-                        if (-not $hasStartLnk) {
-                            $candidateExes = @()
-                            $pkgDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
-                            if (Test-Path $pkgDir) {
-                                $foundDirs = Get-ChildItem -Path $pkgDir -Filter "*$($app.Id)*" -Directory -ErrorAction SilentlyContinue
-                                foreach ($fd in $foundDirs) {
-                                    $candidateExes += Get-ChildItem -Path $fd.FullName -Filter "*.exe" -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'uninstall|helper|setup' }
-                                }
-                            }
-                            if ($candidateExes.Count -gt 0) {
-                                $targetExe = ($candidateExes | Sort-Object Length -Descending | Select-Object -First 1).FullName
-                                $wsh = New-Object -ComObject WScript.Shell
-                                $startLnk = Join-Path $programsPath "$($app.Name).lnk"
-                                $sc = $wsh.CreateShortcut($startLnk)
-                                $sc.TargetPath = $targetExe
-                                $sc.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
-                                $sc.Description = "$($app.Name) Uygulaması"
-                                $sc.Save()
-
-                                if (-not $hasDeskLnk) {
-                                    $deskLnk = Join-Path $desktopPath "$($app.Name).lnk"
-                                    $scD = $wsh.CreateShortcut($deskLnk)
-                                    $scD.TargetPath = $targetExe
-                                    $scD.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
-                                    $scD.Description = "$($app.Name) Uygulaması"
-                                    $scD.Save()
-                                }
-                            }
-                        }
-                    } catch {}
+                    try { [void](Ensure-AppShortcuts -app $app -createDesktop $true -force $true) } catch {}
+                } elseif ($operation -eq "Kaldir") {
+                    try { [void](Remove-AppShortcuts -appName $app.Name) } catch {}
                 }
 
                 if ($global:isDark) {
