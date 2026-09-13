@@ -2612,23 +2612,23 @@ $CycleSourcePrefHandler = {
     Save-UserSettings
     Update-PrefSourceButton
 
-    # Sag ustteki kaynak tercihi degistiginde, katalogdaki ve kuyruktaki tum cift kaynakli uygulamalari bu secime gore guncelle!
-    if ($global:preferredInstallSource -in @("Normal", "Store")) {
-        $targetPref = $global:preferredInstallSource
-        if ($global:allCards) {
-            foreach ($c in $global:allCards) {
-                if ($c.Tag -and $c.Tag.App) {
-                    $a = $c.Tag.App
-                    $isDual = ($a.HasDual -eq "1") -or ($a.StoreId -and ($a.NormalId -or $a.DownloadUrl))
-                    if ($isDual) {
-                        $a.SelectedSource = $targetPref
-                        Update-CardSourceBadge $c $targetPref
-                    }
+    # Sag ustteki kaynak tercihi degistiginde tum cift kaynakli uygulamalar:
+    # "Store" secildiyse -> hepsi Store rozetine guncellenir
+    # "Normal" veya "Her Zaman Sor" secildiyse -> hepsi standart Normal rozetine guncellenir (ve Her Zaman Sor aciksa kart secildiginde pencere sorar)
+    $targetPref = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
+    if ($global:allCards) {
+        foreach ($c in $global:allCards) {
+            if ($c.Tag -and $c.Tag.App) {
+                $a = $c.Tag.App
+                $isDual = ($a.HasDual -eq "1") -or ($a.StoreId -and ($a.NormalId -or $a.DownloadUrl))
+                if ($isDual) {
+                    $a.SelectedSource = $targetPref
+                    Update-CardSourceBadge $c $targetPref
                 }
             }
         }
-        Render-QueuePanel
     }
+    Render-QueuePanel
 }
 
 if ($global:btnSourcePrefToggle) {
@@ -3517,19 +3517,21 @@ function Update-CardSourceBadge($card, [string]$source) {
     if (-not $state.SourceBadge -or -not $state.SourceBadgeText) { return }
 
     if ($source -eq "Store") {
-        $state.SourceBadge.Background = Brush("#1E1B4B")
-        $state.SourceBadge.BorderBrush = Brush("#4338CA")
+        # Soft pastel purple / indigo
+        $state.SourceBadge.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+        $state.SourceBadge.BorderBrush = if ($global:isDark) { Brush("#7C3AED") } else { Brush("#DDD6FE") }
         $state.SourceBadgeText.Text = "Store"
-        $state.SourceBadgeText.Foreground = Brush("#C084FC")
+        $state.SourceBadgeText.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
         if ($state.SourceBadgeImg -and $global:bmpStoreLogo) {
             $state.SourceBadgeImg.Source = $global:bmpStoreLogo
             $state.SourceBadgeImg.Visibility = [System.Windows.Visibility]::Visible
         }
     } else {
-        $state.SourceBadge.Background = Brush("#0F2942")
-        $state.SourceBadge.BorderBrush = Brush("#0369A1")
+        # Soft pastel sky / cyan
+        $state.SourceBadge.Background = if ($global:isDark) { Brush("#0C3247") } else { Brush("#E0F2FE") }
+        $state.SourceBadge.BorderBrush = if ($global:isDark) { Brush("#0284C7") } else { Brush("#BAE6FD") }
         $state.SourceBadgeText.Text = "Normal"
-        $state.SourceBadgeText.Foreground = Brush("#38BDF8")
+        $state.SourceBadgeText.Foreground = if ($global:isDark) { Brush("#7DD3FC") } else { Brush("#0369A1") }
         if ($state.SourceBadgeImg -and $global:bmpGlobeLogo) {
             $state.SourceBadgeImg.Source = $global:bmpGlobeLogo
             $state.SourceBadgeImg.Visibility = [System.Windows.Visibility]::Visible
@@ -3699,6 +3701,11 @@ function New-CompactAppCard($app) {
 
     # Çift Kaynak (Store ve Normal) Seçim Rozeti veya Store Rozeti
     $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
+    if ($hasDualSource) {
+        if (-not $app.SelectedSource -or $app.SelectedSource -eq "") {
+            $app.SelectedSource = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
+        }
+    }
     $sourceBadge = $null
     $sourceBadgeText = $null
     if ($hasDualSource) {
@@ -3734,16 +3741,16 @@ function New-CompactAppCard($app) {
         }
 
         if ($app.SelectedSource -eq "Store") {
-            $sourceBadge.Background = Brush("#1E1B4B")
-            $sourceBadge.BorderBrush = Brush("#4338CA")
+            $sourceBadge.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+            $sourceBadge.BorderBrush = if ($global:isDark) { Brush("#7C3AED") } else { Brush("#DDD6FE") }
             $sourceBadgeText.Text = "Store"
-            $sourceBadgeText.Foreground = Brush("#C084FC")
+            $sourceBadgeText.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
             if ($global:bmpStoreLogo) { $sourceBadgeImg.Source = $global:bmpStoreLogo }
         } else {
-            $sourceBadge.Background = Brush("#0F2942")
-            $sourceBadge.BorderBrush = Brush("#0369A1")
+            $sourceBadge.Background = if ($global:isDark) { Brush("#0C3247") } else { Brush("#E0F2FE") }
+            $sourceBadge.BorderBrush = if ($global:isDark) { Brush("#0284C7") } else { Brush("#BAE6FD") }
             $sourceBadgeText.Text = "Normal"
-            $sourceBadgeText.Foreground = Brush("#38BDF8")
+            $sourceBadgeText.Foreground = if ($global:isDark) { Brush("#7DD3FC") } else { Brush("#0369A1") }
             if ($global:bmpGlobeLogo) { $sourceBadgeImg.Source = $global:bmpGlobeLogo }
         }
 
@@ -3794,8 +3801,8 @@ function New-CompactAppCard($app) {
         $storeBadge.HorizontalAlignment = "Left"
         $storeBadge.Padding = New-Object System.Windows.Thickness(5,1,6,1)
         $storeBadge.Margin = New-Object System.Windows.Thickness(4,0,0,0)
-        $storeBadge.Background = Brush("#1E1B4B")
-        $storeBadge.BorderBrush = Brush("#4338CA")
+        $storeBadge.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+        $storeBadge.BorderBrush = if ($global:isDark) { Brush("#7C3AED") } else { Brush("#DDD6FE") }
         $storeBadge.BorderThickness = New-Object System.Windows.Thickness(1)
         $storeBadge.Cursor = "Hand"
 
@@ -3815,7 +3822,7 @@ function New-CompactAppCard($app) {
         $storeBadgeText.Text = "Sadece Store"
         $storeBadgeText.FontSize = 8.5
         $storeBadgeText.FontWeight = "Bold"
-        $storeBadgeText.Foreground = Brush("#C084FC")
+        $storeBadgeText.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
         $storeBadgeText.VerticalAlignment = "Center"
         [void]$sbStoreSp.Children.Add($storeBadgeText)
         $storeBadge.Child = $sbStoreSp
@@ -4715,51 +4722,116 @@ function Invoke-BatchOperation([string]$operation) {
                     }
                 }
                                 "Kaldir" {
-                    # 0. Microsoft Store / Appx Paketi ise yerel Remove-AppxPackage ile kesin ve hatasız kaldır
-                    $isStoreAppToUninstall = ($app.StoreOnly -eq "1") -or ($app.SelectedSource -eq "Store") -or ($app.Id -match '^[A-Z0-9]{12,14}$') -or ($app.StoreId)
-                    if ($isStoreAppToUninstall) {
-                        Set-Status "$($app.Name) Store paketi sistemden kaldırılıyor..." "WARN"
-                        try {
-                            $cleanSearch = $app.Name -replace '\s*', ''
-                            $storePkg = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { 
-                                ($_.Name -like "*$cleanSearch*") -or 
-                                ($app.StoreId -and $_.PackageFamilyName -like "*$($app.StoreId)*") 
-                            } | Select-Object -First 1
+                    # Otomatik tespit: Bilgisayarda gercekte ne kurulu?
+                    $cleanSearch = $app.Name -replace '\s*', ''
+                    $storePkg = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { 
+                        ($_.Name -like "*$cleanSearch*") -or 
+                        ($app.StoreId -and $_.PackageFamilyName -like "*$($app.StoreId)*") 
+                    } | Select-Object -First 1
 
-                            if ($storePkg) {
+                    $nativeUninst = Get-AppUninstallCommand $app.Name $app.Id
+                    $hasNormalInstalled = ($nativeUninst -ne $null -and $nativeUninst.Cmd) -or (if ($app.ExePath) { Test-Path $app.ExePath } else { $false })
+                    $hasStoreInstalled = ($storePkg -ne $null)
+
+                    $targetUninstallType = "" # "Normal", "Store", "Both"
+
+                    if ($hasStoreInstalled -and $hasNormalInstalled) {
+                        # Her ikisi de kurulu ise KULLANICIYA SOR!
+                        $dlgUninst = New-Object System.Windows.Window
+                        $dlgUninst.Title = "Kaldırma Seçeneği - $($app.Name)"
+                        $dlgUninst.Width = 440
+                        $dlgUninst.Height = 220
+                        $dlgUninst.WindowStartupLocation = "CenterScreen"
+                        $dlgUninst.ResizeMode = "NoResize"
+                        $dlgUninst.Background = if ($global:isDark) { Brush("#0F172A") } else { Brush("#FFFFFF") }
+                        $dlgUninst.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+
+                        $uSp = New-Object System.Windows.Controls.StackPanel
+                        $uSp.Margin = New-Object System.Windows.Thickness(20)
+
+                        $uMsg = New-Object System.Windows.Controls.TextBlock
+                        $uMsg.Text = "$($app.Name) uygulamasının sisteminizde hem Standart (Web) hem de Microsoft Store sürümü tespit edildi.`nHangisini kaldırmak istersiniz?"
+                        $uMsg.TextWrapping = "Wrap"
+                        $uMsg.FontSize = 12
+                        $uMsg.Margin = New-Object System.Windows.Thickness(0,0,0,16)
+                        [void]$uSp.Children.Add($uMsg)
+
+                        $uBtnSp = New-Object System.Windows.Controls.StackPanel
+                        $uBtnSp.Orientation = "Horizontal"
+                        $uBtnSp.HorizontalAlignment = "Right"
+
+                        $script:chosenUninst = "Both"
+
+                        $btnUNormal = New-Object System.Windows.Controls.Button
+                        $btnUNormal.Content = "🌐 Normal Sürüm"
+                        $btnUNormal.Padding = New-Object System.Windows.Thickness(10,6,10,6)
+                        $btnUNormal.Margin = New-Object System.Windows.Thickness(0,0,8,0)
+                        $btnUNormal.Add_Click({ $script:chosenUninst = "Normal"; $dlgUninst.Close() })
+                        [void]$uBtnSp.Children.Add($btnUNormal)
+
+                        $btnUStore = New-Object System.Windows.Controls.Button
+                        $btnUStore.Content = "🛍️ Store Sürüm"
+                        $btnUStore.Padding = New-Object System.Windows.Thickness(10,6,10,6)
+                        $btnUStore.Margin = New-Object System.Windows.Thickness(0,0,8,0)
+                        $btnUStore.Add_Click({ $script:chosenUninst = "Store"; $dlgUninst.Close() })
+                        [void]$uBtnSp.Children.Add($btnUStore)
+
+                        $btnUBoth = New-Object System.Windows.Controls.Button
+                        $btnUBoth.Content = "🗑️ İkisini de Kaldır"
+                        $btnUBoth.Padding = New-Object System.Windows.Thickness(10,6,10,6)
+                        $btnUBoth.FontWeight = "Bold"
+                        $btnUBoth.Add_Click({ $script:chosenUninst = "Both"; $dlgUninst.Close() })
+                        [void]$uBtnSp.Children.Add($btnUBoth)
+
+                        [void]$uSp.Children.Add($uBtnSp)
+                        $dlgUninst.Content = $uSp
+                        [void]$dlgUninst.ShowDialog()
+                        $targetUninstallType = $script:chosenUninst
+                    } elseif ($hasStoreInstalled) {
+                        # Sadece Store kurulu ise sormadan Store kaldir
+                        $targetUninstallType = "Store"
+                    } else {
+                        # Sadece Normal kurulu ise (veya genel) sormadan Normal kaldir
+                        $targetUninstallType = "Normal"
+                    }
+
+                    # Store Kaldirma islemi
+                    if ($targetUninstallType -eq "Store" -or $targetUninstallType -eq "Both") {
+                        if ($storePkg) {
+                            Set-Status "$($app.Name) Store paketi sistemden kaldırılıyor..." "WARN"
+                            try {
                                 Remove-AppxPackage -Package $storePkg.PackageFullName -ErrorAction Stop
                                 $res = @{ ExitCode = 0; Output = "$($app.Name) Store paketi başarıyla kaldırıldı."; Error = "" }
+                            } catch {
+                                $res = @{ ExitCode = 1; Output = ""; Error = $_.Exception.Message }
                             }
-                        } catch {
-                            $res = $null
                         }
                     }
 
-                    if (-not $res -or $res.ExitCode -ne 0) {
-                        # 1. WinGet ile tam ID üzerinden kaldırmayı dene
+                    # Normal Kaldirma islemi
+                    if ($targetUninstallType -eq "Normal" -or $targetUninstallType -eq "Both") {
+                        # 1. WinGet ile tam ID uzerinden kaldir
                         $args1 = @("uninstall", "--id", $app.Id, "--exact", "--accept-source-agreements")
-                        $res = & $runWinget $args1
-                    }
+                        $res1 = & $runWinget $args1
+                        $res = $res1
 
-                    # 2. Tam ID eşleşmezse serbest ID ile dene
-                    if ($res.ExitCode -ne 0) {
-                        $args2 = @("uninstall", "--id", $app.Id, "--accept-source-agreements")
-                        $res2 = & $runWinget $args2
-                        if ($res2.ExitCode -eq 0) { $res = $res2 }
-                    }
+                        # 2. Tam ID eslesmezse serbest ID ile dene
+                        if ($res.ExitCode -ne 0) {
+                            $args2 = @("uninstall", "--id", $app.Id, "--accept-source-agreements")
+                            $res2 = & $runWinget $args2
+                            if ($res2.ExitCode -eq 0) { $res = $res2 }
+                        }
 
-                    # 3. Hala bulunamazsa uygulama ismi ile kaldırmayı dene
-                    if ($res.ExitCode -ne 0) {
-                        $cleanName = $app.Name -replace '\s*\((?:x64|x86)\)', '' -replace '\s*Uygulaması', ''
-                        $args3 = @("uninstall", "--name", $cleanName, "--accept-source-agreements")
-                        $res3 = & $runWinget $args3
-                        if ($res3.ExitCode -eq 0) { $res = $res3 }
-                    }
+                        # 3. Hala bulunamazsa uygulama ismi ile dene
+                        if ($res.ExitCode -ne 0) {
+                            $cleanName = $app.Name -replace '\s*\((?:x64|x86)\)', '' -replace '\s*Uygulaması?', ''
+                            $args3 = @("uninstall", "--name", $cleanName, "--accept-source-agreements")
+                            $res3 = & $runWinget $args3
+                            if ($res3.ExitCode -eq 0) { $res = $res3 }
+                        }
 
-                    # 4. WinGet bulamazsa Windows Kayıt Defterindeki yerel kaldırıcıyı (UninstallString) çalıştır
-                    if ($res.ExitCode -ne 0) {
-                        $nativeUninst = Get-AppUninstallCommand $app.Name $app.Id
-                        if ($nativeUninst -and $nativeUninst.Cmd) {
+                        # 4. WinGet bulamazsa Windows Kayit Defterindeki yerel kaldiriciyi calistir
+                        if ($res.ExitCode -ne 0 -and $nativeUninst -and $nativeUninst.Cmd) {
                             Set-Status "$($app.Name) Windows yerel kaldırıcı çalıştırılıyor..." "WARN"
                             $rawCmd = $nativeUninst.Cmd
                             if ($rawCmd -match 'MsiExec\.exe\s+/(?:I|X)\s*(\{[^}]+\})') {
@@ -4778,7 +4850,7 @@ function Invoke-BatchOperation([string]$operation) {
             $exitCode = if ($res) { $res.ExitCode } else { -1 }
             $fullLog = "$($res.Output)`n$($res.Error)"
 
-                        # Kaldırma işlemi sonrası durum doğrulaması: Uygulama sistemden gerçekten silindi mi?
+            # Kaldırma işlemi sonrası durum doğrulaması: Uygulama sistemden gerçekten silindi mi?
             if ($operation -eq "Kaldir") {
                 $waitSec = 0
                 while ($waitSec -lt 8) {
@@ -5187,7 +5259,9 @@ function Show-DefenderSecurityModal {
 
     $hIcoB = New-Object System.Windows.Controls.Border
     $hIcoB.Width = 46; $hIcoB.Height = 46; $hIcoB.CornerRadius = New-Object System.Windows.CornerRadius(10)
-    $hIcoB.Background = Brush("#064E3B"); $hIcoB.BorderBrush = Brush("#10B981"); $hIcoB.BorderThickness = New-Object System.Windows.Thickness(1)
+    $hIcoB.Background = if ($global:isDark) { Brush("#064E3B") } else { Brush("#DCFCE7") }
+    $hIcoB.BorderBrush = if ($global:isDark) { Brush("#10B981") } else { Brush("#86EFAC") }
+    $hIcoB.BorderThickness = New-Object System.Windows.Thickness(1)
     $hIcoB.Margin = New-Object System.Windows.Thickness(0,0,14,0)
     $hIcoT = New-Object System.Windows.Controls.TextBlock; $hIcoT.Text = "🛡️"; $hIcoT.FontSize = 22
     $hIcoT.HorizontalAlignment = "Center"; $hIcoT.VerticalAlignment = "Center"
@@ -5280,41 +5354,44 @@ function Show-DefenderSecurityModal {
     [void]$cardsGrid.ColumnDefinitions.Add($cg0); [void]$cardsGrid.ColumnDefinitions.Add($cg1); [void]$cardsGrid.ColumnDefinitions.Add($cg2); [void]$cardsGrid.ColumnDefinitions.Add($cg3)
     $cardsGrid.Margin = New-Object System.Windows.Thickness(0, 0, 0, 14)
 
-    function New-DefenderCard([string]$ico, [string]$title, [string]$sub, [string]$borderHex, [int]$col) {
+    function New-DefenderCard([string]$ico, [string]$title, [string]$sub, [string]$accentHex, [string]$lightBgHex, [string]$lightTextHex, [int]$col) {
         $c = New-Object System.Windows.Controls.Border
-        $c.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush("#FFFFFF") }
-        $c.BorderBrush = Brush($borderHex)
-        $c.BorderThickness = New-Object System.Windows.Thickness(1.2)
         $c.CornerRadius = New-Object System.Windows.CornerRadius(10)
-        $c.Padding = New-Object System.Windows.Thickness(12, 12, 12, 12)
-        $marginRight = if ($col -lt 3) { 12 } else { 0 }
-        $c.Margin = New-Object System.Windows.Thickness(0, 0, $marginRight, 0)
+        # Gozu yormayan pastel soft renkler
+        $c.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush($lightBgHex) }
+        $c.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush($accentHex) }
+        $c.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $c.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
+        
+        # Bitisikligi onleyen ayrismis zarif bosluklar (5. resimdeki sikisikligi cozer)
+        $c.Margin = New-Object System.Windows.Thickness(if ($col -eq 0) { 0 } else { 8 }, 0, if ($col -eq 3) { 0 } else { 8 }, 0)
         $c.Cursor = "Hand"
 
         $sp = New-Object System.Windows.Controls.StackPanel
+        $sp.IsHitTestVisible = $false # Tiklamanin Border'a puruzsuz ulasmasini saglar
+        
         $iT = New-Object System.Windows.Controls.TextBlock; $iT.Text = $ico; $iT.FontSize = 22; $iT.Margin = New-Object System.Windows.Thickness(0,0,0,6)
         $tT = New-Object System.Windows.Controls.TextBlock; $tT.Text = $title; $tT.FontSize = 12.5; $tT.FontWeight = "Bold"
-        $tT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#1E293B") }
+        $tT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush($lightTextHex) }
         
         $sT = New-Object System.Windows.Controls.TextBlock; $sT.Text = $sub; $sT.FontSize = 10
-        # Beyaz temada kotu duran koyu siyah yerine okunakli ve modern gri tonu (#64748B)
         $sT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
         $sT.Margin = New-Object System.Windows.Thickness(0,3,0,0); $sT.TextWrapping = "Wrap"
         [void]$sp.Children.Add($iT); [void]$sp.Children.Add($tT); [void]$sp.Children.Add($sT)
         $c.Child = $sp
 
-        $c.Add_MouseEnter({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1A2E4C") } else { Brush("#F1F5F9") } })
-        $c.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush("#FFFFFF") } })
+        $c.Add_MouseEnter({ param($s,$e) $s.Opacity = 0.88 })
+        $c.Add_MouseLeave({ param($s,$e) $s.Opacity = 1.0 })
 
         [System.Windows.Controls.Grid]::SetColumn($c, $col)
         [void]$cardsGrid.Children.Add($c)
         return $c
     }
 
-    $cardQuick = New-DefenderCard "⚡" "Hızlı Tarama" "Kritik sistem dosyaları ve bellek" "#0284C7" 0
-    $cardFull  = New-DefenderCard "🔍" "Tam Tarama" "Tüm diskler ve derinlemesine analiz" "#4F46E5" 1
-    $cardUpd   = New-DefenderCard "🔄" "İmzaları Güncelle" "Defender bulut tanımlarını indir" "#059669" 2
-    $cardOpen  = New-DefenderCard "🛡️" "Windows Güvenliği" "Resmi Windows kalkan panelini aç" "#D97706" 3
+    $cardQuick = New-DefenderCard "⚡" "Hızlı Tarama" "Kritik sistem alanlarını tara" "#38BDF8" "#F0F9FF" "#0369A1" 0
+    $cardFull  = New-DefenderCard "🛡️" "Tam Tarama" "Tüm diskleri derinlemesine tara" "#818CF8" "#F5F3FF" "#4F46E5" 1
+    $cardUpd   = New-DefenderCard "🔄" "İmza Güncelle" "En güncel virüs tanımlarını indir" "#34D399" "#ECFDF5" "#059669" 2
+    $cardOpen  = New-DefenderCard "⚙️" "Windows Güvenliği" "Resmi Windows kalkan panelini aç" "#F59E0B" "#FFFBEB" "#B45309" 3
 
     [System.Windows.Controls.Grid]::SetRow($cardsGrid, 2)
     [void]$mGrid.Children.Add($cardsGrid)
@@ -5440,10 +5517,12 @@ function Show-DefenderSecurityModal {
                     $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 
                     $proc = [System.Diagnostics.Process]::Start($psi)
-                    $outText = $proc.StandardOutput.ReadToEnd()
-                    $errText = $proc.StandardError.ReadToEnd()
+                    $outTask = $proc.StandardOutput.ReadToEndAsync()
+                    $errTask = $proc.StandardError.ReadToEndAsync()
                     $proc.WaitForExit()
                     $errCode = $proc.ExitCode
+                    $outText = if ($outTask.IsCompleted -or $outTask.Wait(4000)) { $outTask.Result } else { "" }
+                    $errText = if ($errTask.IsCompleted -or $errTask.Wait(4000)) { $errTask.Result } else { "" }
                     if ($errText) { $outText += "`n" + $errText }
                 } catch {
                     $outText = "MpCmdRun hatasi: " + $_.Exception.Message
@@ -5654,7 +5733,7 @@ function Show-DiskCleanerModal {
     $actionBorder = New-Object System.Windows.Controls.Border
     $actionBorder.Background = if ($global:isDark) { Brush("#0E131F") } else { Brush("#F8FAFC") }
     $actionBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $actionBorder.BorderThickness = New-Object System.Windows.Thickness(0,0,0,1)
+    $actionBorder.BorderThickness = New-Object System.Windows.Thickness(0, 0, 0, 1)
     $actionBorder.Padding = New-Object System.Windows.Thickness(24, 10, 24, 10)
     [System.Windows.Controls.Grid]::SetRow($actionBorder, 1)
     [void]$gridMain.Children.Add($actionBorder)
@@ -5665,69 +5744,77 @@ function Show-DiskCleanerModal {
     $aCol2 = New-Object System.Windows.Controls.ColumnDefinition; $aCol2.Width = [System.Windows.GridLength]::Auto
     [void]$actGrid.ColumnDefinitions.Add($aCol0); [void]$actGrid.ColumnDefinitions.Add($aCol1); [void]$actGrid.ColumnDefinitions.Add($aCol2)
 
+    $cleanerBtnTpl = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.88"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.72"/></Trigger></ControlTemplate.Triggers></ControlTemplate>')
+
     # Modern Select All Button
     $btnSelectAll = New-Object System.Windows.Controls.Button
     $btnSelectAll.Content = "✓ Tümünü Seç / Kaldır"
-    $btnSelectAll.Padding = New-Object System.Windows.Thickness(12, 6, 12, 6)
+    $btnSelectAll.Padding = New-Object System.Windows.Thickness(14, 7, 14, 7)
     $btnSelectAll.FontSize = 12
+    $btnSelectAll.FontWeight = "SemiBold"
     $btnSelectAll.Cursor = "Hand"
-    $btnSelectAll.Background = if ($global:isDark) { Brush("#1A2234") } else { Brush("#E2E8F0") }
+    $btnSelectAll.Template = $cleanerBtnTpl
+    $btnSelectAll.Background = if ($global:isDark) { Brush("#1A2234") } else { Brush("#EDF2F7") }
     $btnSelectAll.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
-    $btnSelectAll.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $btnSelectAll.BorderBrush = if ($global:isDark) { Brush("#2E3E5B") } else { Brush("#CBD5E1") }
     $btnSelectAll.BorderThickness = New-Object System.Windows.Thickness(1)
     $btnSelectAll.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($btnSelectAll, 0)
     [void]$actGrid.Children.Add($btnSelectAll)
 
+    # Action Buttons on the Right
     $actBtnSp = New-Object System.Windows.Controls.StackPanel
     $actBtnSp.Orientation = "Horizontal"
+    $actBtnSp.HorizontalAlignment = "Right"
     $actBtnSp.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($actBtnSp, 2)
-    [void]$actGrid.Children.Add($actBtnSp)
 
     # Windows Disk Cleanup button (cleanmgr)
     $btnWinClean = New-Object System.Windows.Controls.Button
     $btnWinClean.Content = "⚙️ Windows Temizleme (cleanmgr)"
-    $btnWinClean.Padding = New-Object System.Windows.Thickness(12, 6, 12, 6)
+    $btnWinClean.Padding = New-Object System.Windows.Thickness(14, 7, 14, 7)
     $btnWinClean.FontSize = 12
+    $btnWinClean.FontWeight = "SemiBold"
     $btnWinClean.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnWinClean.Cursor = "Hand"
-    $btnWinClean.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnWinClean.Template = $cleanerBtnTpl
+    $btnWinClean.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#EDF2F7") }
     $btnWinClean.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
     $btnWinClean.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
     $btnWinClean.BorderThickness = New-Object System.Windows.Thickness(1)
-    $btnWinClean.Add_Click({
-        try { Start-Process "cleanmgr.exe" } catch { [System.Windows.MessageBox]::Show($_.Exception.Message) }
-    })
+    $btnWinClean.ToolTip = "Gelişmiş dahili Windows Temizleme Aracı'nı (cleanmgr.exe) açar."
+    $btnWinClean.Add_Click({ Start-Process "cleanmgr.exe" -ArgumentList "/d C:" })
     [void]$actBtnSp.Children.Add($btnWinClean)
 
     # Rescan Button
     $btnScan = New-Object System.Windows.Controls.Button
     $btnScan.Content = "🔄 Yeniden Tara"
-    $btnScan.Padding = New-Object System.Windows.Thickness(14, 6, 14, 6)
+    $btnScan.Padding = New-Object System.Windows.Thickness(14, 7, 14, 7)
     $btnScan.FontSize = 12
     $btnScan.FontWeight = "SemiBold"
     $btnScan.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnScan.Cursor = "Hand"
-    $btnScan.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnScan.Template = $cleanerBtnTpl
+    $btnScan.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#EDF2F7") }
     $btnScan.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnScan.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#94A3B8") }
+    $btnScan.BorderBrush = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
     $btnScan.BorderThickness = New-Object System.Windows.Thickness(1)
     [void]$actBtnSp.Children.Add($btnScan)
 
     # Clean Button
     $btnClean = New-Object System.Windows.Controls.Button
     $btnClean.Content = "🚀 Seçilenleri Temizle"
-    $btnClean.Padding = New-Object System.Windows.Thickness(18, 6, 18, 6)
+    $btnClean.Padding = New-Object System.Windows.Thickness(18, 7, 18, 7)
     $btnClean.FontSize = 12.5
     $btnClean.FontWeight = "Bold"
     $btnClean.Cursor = "Hand"
+    $btnClean.Template = $cleanerBtnTpl
     $btnClean.Background = Brush("#0284C7")
     $btnClean.Foreground = Brush("#FFFFFF")
     $btnClean.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnClean.IsEnabled = $false
     [void]$actBtnSp.Children.Add($btnClean)
 
+    [void]$actGrid.Children.Add($actBtnSp)
     $actionBorder.Child = $actGrid
 
     # 3. PROGRESS BAR STRIP
@@ -5760,6 +5847,38 @@ function Show-DiskCleanerModal {
     $scroll.VerticalScrollBarVisibility = "Auto"
     $scroll.HorizontalScrollBarVisibility = "Disabled"
     $scroll.Padding = New-Object System.Windows.Thickness(24, 16, 24, 16)
+    
+    # Modern Slim Scrollbar Template
+    try {
+        $sbThumbColor = if ($global:isDark) { "#334155" } else { "#CBD5E1" }
+        $sbXaml = @"
+<Style xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="ScrollBar">
+    <Setter Property="Width" Value="8"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Template">
+        <Setter.Value>
+            <ControlTemplate TargetType="ScrollBar">
+                <Grid Background="Transparent">
+                    <Track x:Name="PART_Track" IsDirectionReversed="true">
+                        <Track.Thumb>
+                            <Thumb>
+                                <Thumb.Template>
+                                    <ControlTemplate TargetType="Thumb">
+                                        <Border CornerRadius="4" Background="$sbThumbColor"/>
+                                    </ControlTemplate>
+                                </Thumb.Template>
+                            </Thumb>
+                        </Track.Thumb>
+                    </Track>
+                </Grid>
+            </ControlTemplate>
+        </Setter.Value>
+    </Setter>
+</Style>
+"@
+        $scroll.Resources.Add([System.Windows.Controls.Primitives.ScrollBar], [System.Windows.Markup.XamlReader]::Parse($sbXaml))
+    } catch {}
+
     [System.Windows.Controls.Grid]::SetRow($scroll, 3)
     [void]$gridMain.Children.Add($scroll)
 
@@ -5789,12 +5908,14 @@ function Show-DiskCleanerModal {
     [void]$fGrid.Children.Add($fHint)
 
     $btnClose = New-Object System.Windows.Controls.Button
-    $btnClose.Content = "Kapat"
-    $btnClose.Padding = New-Object System.Windows.Thickness(18, 6, 18, 6)
+    $btnClose.Content = "Pencereyi Kapat"
+    $btnClose.Padding = New-Object System.Windows.Thickness(18, 7, 18, 7)
     $btnClose.FontSize = 12
+    $btnClose.FontWeight = "SemiBold"
     $btnClose.Cursor = "Hand"
-    $btnClose.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnClose.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+    $btnClose.Template = $cleanerBtnTpl
+    $btnClose.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#EDF2F7") }
+    $btnClose.Foreground = if ($global:isDark) { Brush("#CBD5E1") } else { Brush("#475569") }
     $btnClose.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
     $btnClose.BorderThickness = New-Object System.Windows.Thickness(1)
     $btnClose.Add_Click({ $cWin.Close() })
