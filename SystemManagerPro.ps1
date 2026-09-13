@@ -110,7 +110,7 @@ $global:localLogosMap = @{
     "Kaspersky"                        = @("330px-Kaspersky_icon.svg.png")
     "Adobe Acrobat Reader"             = @("3840px-Adobe_Acrobat_Reader_icon.png")
     "Google Chrome"                    = @("3840px-Google_Chrome_icon_Februa.png")
-        "Visual Studio Community"          = @("visual_studio_2019.png", "3840px-Visual_Studio_Icon_2022.s.png")
+        "Visual Studio Community"          = @("330px-Visual_Studio_Icon_2026.sv.png", "3840px-Visual_Studio_Icon_2022.s.png")
     "Visual C++ 2015-2022 (x64)"          = @("visual_studio_2019.png", "visual_cpp.png")
     "Visual C++ 2015-2022 (x86)"          = @("visual_studio_2019.png", "visual_cpp.png")
     "Visual C++ 2013 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
@@ -3515,6 +3515,8 @@ function Update-CardSourceBadge($card, [string]$source) {
     if (-not $card -or -not $card.Tag) { return }
     $state = $card.Tag
     if (-not $state.SourceBadge -or -not $state.SourceBadgeText) { return }
+    # Yuklu olan uygulamalarin rozeti kurulu gercek duruma gore kilitlidir, degistirilemez!
+    if ($state.IsInstalled) { return }
 
     if ($source -eq "Store") {
         # Soft pastel purple / indigo
@@ -3546,31 +3548,34 @@ function Toggle-CardSelection($card) {
     $app = $state.App
 
     if (-not $state.IsSelected) {
-        $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
-        if ($hasDualSource) {
-            if ($global:preferredInstallSource -eq "Normal") {
-                # Sag ustte Normal secildiyse sorulmadan Normal yap
-                $chosenSource = "Normal"
-                $app.SelectedSource = $chosenSource
-                Update-CardSourceBadge $card $chosenSource
-            } elseif ($global:preferredInstallSource -eq "Store") {
-                # Sag ustte Store secildiyse sorulmadan Store yap
-                $chosenSource = "Store"
-                $app.SelectedSource = $chosenSource
-                Update-CardSourceBadge $card $chosenSource
+        # YUKLU OLANLARDA: Kaynak secim diyalogu gosterilmez, degistirilemez!
+        if (-not $state.IsInstalled) {
+            $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
+            if ($hasDualSource) {
+                if ($global:preferredInstallSource -eq "Normal") {
+                    # Sag ustte Normal secildiyse sorulmadan Normal yap
+                    $chosenSource = "Normal"
+                    $app.SelectedSource = $chosenSource
+                    Update-CardSourceBadge $card $chosenSource
+                } elseif ($global:preferredInstallSource -eq "Store") {
+                    # Sag ustte Store secildiyse sorulmadan Store yap
+                    $chosenSource = "Store"
+                    $app.SelectedSource = $chosenSource
+                    Update-CardSourceBadge $card $chosenSource
+                } else {
+                    # Sag ustte 'Her Zaman Sor' aciksa: Resim 3'teki gibi Show-SourceSelectDialog sor!
+                    $chosenSource = Show-SourceSelectDialog $app $state.IconSource
+                    if (-not $chosenSource) { return }
+                    $app.SelectedSource = $chosenSource
+                    Update-CardSourceBadge $card $chosenSource
+                }
             } else {
-                # Sag ustte 'Her Zaman Sor' aciksa: Resim 3'teki gibi Show-SourceSelectDialog sor!
-                $chosenSource = Show-SourceSelectDialog $app $state.IconSource
-                if (-not $chosenSource) { return }
-                $app.SelectedSource = $chosenSource
-                Update-CardSourceBadge $card $chosenSource
-            }
-        } else {
-            $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
-            if ($isPureStore) {
-                $app.SelectedSource = "Store"
-            } else {
-                $app.SelectedSource = "Normal"
+                $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
+                if ($isPureStore) {
+                    $app.SelectedSource = "Store"
+                } else {
+                    $app.SelectedSource = "Normal"
+                }
             }
         }
 
@@ -3699,16 +3704,118 @@ function New-CompactAppCard($app) {
     $badge.Child = $badgeText
     [void]$badgeRow.Children.Add($badge)
 
+    # Kaynak Tespiti: Uygulama sistemde yuklu ise ne yuklu oldugunu tam tespit et
+    $instSourceType = "None"
+    if ($isInstalled) {
+        $cleanSearch = $app.Name -replace '\s*', ''
+        $hasStoreInst = $false
+        if ($app.StoreId -or $app.StoreOnly -eq "1" -or ($app.HasDual -eq "1")) {
+            $storePkg = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { 
+                ($_.Name -like "*$cleanSearch*") -or 
+                ($app.StoreId -and $_.PackageFamilyName -like "*$($app.StoreId)*") 
+            } | Select-Object -First 1
+            if ($storePkg) { $hasStoreInst = $true }
+        }
+        $nativeCmd = Get-AppUninstallCommand $app.Name $app.Id
+        $hasNormalInst = ($nativeCmd -ne $null -and $nativeCmd.Cmd) -or (if ($app.ExePath) { Test-Path $app.ExePath } else { $false }) -or ($global:verifiedInstalledIds.Contains($app.Id))
+        
+        if ($hasStoreInst -and $hasNormalInst) {
+            $instSourceType = "Both"
+        } elseif ($hasStoreInst) {
+            $instSourceType = "Store"
+        } elseif ($hasNormalInst) {
+            $instSourceType = "Normal"
+        } else {
+            $instSourceType = if ($isStoreApp) { "Store" } else { "Normal" }
+        }
+    }
+
     # Çift Kaynak (Store ve Normal) Seçim Rozeti veya Store Rozeti
     $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
-    if ($hasDualSource) {
+    if ($hasDualSource -and -not $isInstalled) {
         if (-not $app.SelectedSource -or $app.SelectedSource -eq "") {
             $app.SelectedSource = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
         }
     }
+
     $sourceBadge = $null
     $sourceBadgeText = $null
-    if ($hasDualSource) {
+
+    # 1. EGER YUKLU ISE: Ne yuklu ise o gozukur ve degistirilemez! (Normal, Store veya 2'si birden)
+    if ($isInstalled) {
+        $sourceBadge = New-Object System.Windows.Controls.Border
+        $sourceBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
+        $sourceBadge.HorizontalAlignment = "Left"
+        $sourceBadge.Padding = New-Object System.Windows.Thickness(5,1,6,1)
+        $sourceBadge.Margin = New-Object System.Windows.Thickness(4,0,0,0)
+        $sourceBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+        $sourceBadge.Cursor = "Arrow" # Degistirilemez kilitli imlec
+
+        $sbSp = New-Object System.Windows.Controls.StackPanel
+        $sbSp.Orientation = "Horizontal"
+        $sbSp.VerticalAlignment = "Center"
+
+        $sourceBadgeImg = New-Object System.Windows.Controls.Image
+        $sourceBadgeImg.Width = 12; $sourceBadgeImg.Height = 12
+        $sourceBadgeImg.Margin = New-Object System.Windows.Thickness(0,0,4,0)
+        $sourceBadgeImg.VerticalAlignment = "Center"
+        [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($sourceBadgeImg, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+        [void]$sbSp.Children.Add($sourceBadgeImg)
+
+        $sourceBadgeText = New-Object System.Windows.Controls.TextBlock
+        $sourceBadgeText.FontSize = 8.5
+        $sourceBadgeText.FontWeight = "Bold"
+        $sourceBadgeText.VerticalAlignment = "Center"
+        [void]$sbSp.Children.Add($sourceBadgeText)
+        $sourceBadge.Child = $sbSp
+
+        if ($instSourceType -eq "Both") {
+            # Her ikisi de yuklu!
+            $app.SelectedSource = "Both"
+            $sourceBadge.Background = if ($global:isDark) { Brush("#1F2937") } else { Brush("#F1F5F9") }
+            $sourceBadge.BorderBrush = if ($global:isDark) { Brush("#475569") } else { Brush("#CBD5E1") }
+            $sourceBadgeText.Text = "Normal + Store"
+            $sourceBadgeText.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#334155") }
+            if ($global:bmpGlobeLogo) { $sourceBadgeImg.Source = $global:bmpGlobeLogo }
+            
+            $srcTt = New-Object System.Windows.Controls.ToolTip
+            $srcTt.Content = "Kurulu Durum: Bu uygulamanın hem Standart (Web) hem de Microsoft Store sürümü bilgisayarınızda yüklüdür."
+            $srcTt.Background = Brush("#0F172A"); $srcTt.Foreground = Brush("#F8FAFC")
+            $sourceBadge.ToolTip = $srcTt
+        } elseif ($instSourceType -eq "Store") {
+            # Sadece Store yuklu!
+            $app.SelectedSource = "Store"
+            $sourceBadge.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+            $sourceBadge.BorderBrush = if ($global:isDark) { Brush("#7C3AED") } else { Brush("#DDD6FE") }
+            $sourceBadgeText.Text = "Store"
+            $sourceBadgeText.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
+            if ($global:bmpStoreLogo) { $sourceBadgeImg.Source = $global:bmpStoreLogo }
+            
+            $srcTt = New-Object System.Windows.Controls.ToolTip
+            $srcTt.Content = "Kurulu Durum: Bu uygulamanın Microsoft Store sürümü bilgisayarınızda yüklüdür."
+            $srcTt.Background = Brush("#0F172A"); $srcTt.Foreground = Brush("#C084FC")
+            $sourceBadge.ToolTip = $srcTt
+        } else {
+            # Sadece Normal yuklu!
+            $app.SelectedSource = "Normal"
+            $sourceBadge.Background = if ($global:isDark) { Brush("#0C3247") } else { Brush("#E0F2FE") }
+            $sourceBadge.BorderBrush = if ($global:isDark) { Brush("#0284C7") } else { Brush("#BAE6FD") }
+            $sourceBadgeText.Text = "Normal"
+            $sourceBadgeText.Foreground = if ($global:isDark) { Brush("#7DD3FC") } else { Brush("#0369A1") }
+            if ($global:bmpGlobeLogo) { $sourceBadgeImg.Source = $global:bmpGlobeLogo }
+            
+            $srcTt = New-Object System.Windows.Controls.ToolTip
+            $srcTt.Content = "Kurulu Durum: Bu uygulamanın standart masaüstü (Web) sürümü bilgisayarınızda yüklüdür."
+            $srcTt.Background = Brush("#0F172A"); $srcTt.Foreground = Brush("#38BDF8")
+            $sourceBadge.ToolTip = $srcTt
+        }
+
+        # Tiklandiginda degistirilemez! (Kilitli)
+        $sourceBadge.Add_MouseLeftButtonUp({ param($sb, $ev) $ev.Handled = $true })
+        [void]$badgeRow.Children.Add($sourceBadge)
+
+    } elseif ($hasDualSource) {
+        # 2. YUKLU DEGILSE VE CIFT KAYNAKLI ISE: Normal veya Store secilebilir
         $sourceBadge = New-Object System.Windows.Controls.Border
         $sourceBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
         $sourceBadge.HorizontalAlignment = "Left"
@@ -3736,7 +3843,6 @@ function New-CompactAppCard($app) {
         $sourceBadge.Child = $sbSp
 
         if (-not $app.SelectedSource) {
-            # Kullanici tercihi: Eger hem normal hem store varsa her zaman normal surum gelsin
             $app.SelectedSource = "Normal"
         }
 
@@ -3754,31 +3860,12 @@ function New-CompactAppCard($app) {
             if ($global:bmpGlobeLogo) { $sourceBadgeImg.Source = $global:bmpGlobeLogo }
         }
 
-        # Hover efekti - etkilesimli oldugunu hissettir
-        $sourceBadge.Add_MouseEnter({
-            param($s, $e)
-            if ($s.Tag -and $s.Tag.App.SelectedSource -eq "Store") {
-                $s.Background = Brush("#312E81"); $s.BorderBrush = Brush("#818CF8")
-            } else {
-                $s.Background = Brush("#0369A1"); $s.BorderBrush = Brush("#38BDF8")
-            }
-        })
-        $sourceBadge.Add_MouseLeave({
-            param($s, $e)
-            if ($s.Tag -and $s.Tag.App.SelectedSource -eq "Store") {
-                $s.Background = Brush("#1E1B4B"); $s.BorderBrush = Brush("#4338CA")
-            } else {
-                $s.Background = Brush("#0F2942"); $s.BorderBrush = Brush("#0369A1")
-            }
-        })
-
-        $sourceBadge.Tag = @{ App = $app; Card = $card; Img = $img }
+        $sourceBadge.Tag = @{ App = $app; Card = $card }
         $sourceBadge.Add_MouseLeftButtonUp({
             param($sb, $ev)
             $ev.Handled = $true
             $targetApp = $sb.Tag.App
             $targetCard = $sb.Tag.Card
-            # Hizli gecis: tiklayinca Normal <-> Store arasinda dogrudan degistir
             if ($targetApp.SelectedSource -eq "Store") {
                 $targetApp.SelectedSource = "Normal"
             } else {
@@ -3795,7 +3882,9 @@ function New-CompactAppCard($app) {
         $sourceBadge.ToolTip = $srcTt
 
         [void]$badgeRow.Children.Add($sourceBadge)
-    } elseif ($isStoreApp -and -not $isInstalled) {
+
+    } elseif ($isStoreApp) {
+        # 3. YUKLU DEGILSE VE SADECE STORE ISE
         $storeBadge = New-Object System.Windows.Controls.Border
         $storeBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
         $storeBadge.HorizontalAlignment = "Left"
@@ -3827,24 +3916,8 @@ function New-CompactAppCard($app) {
         [void]$sbStoreSp.Children.Add($storeBadgeText)
         $storeBadge.Child = $sbStoreSp
 
-        $storeBadge.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#312E81"); $s.BorderBrush = Brush("#818CF8") })
-        $storeBadge.Add_MouseLeave({ param($s,$e) $s.Background = Brush("#1E1B4B"); $s.BorderBrush = Brush("#4338CA") })
-
-        # Store badge tıklanınca mağazayı aç
-        $capturedStoreId = $app.Id
-        $storeBadge.Add_MouseLeftButtonUp({
-            param($s, $ev)
-            $ev.Handled = $true
-            try {
-                Start-Process "ms-windows-store://pdp/?ProductId=$capturedStoreId"
-            } catch {
-                Start-Process "https://www.microsoft.com/store/apps/$capturedStoreId"
-            }
-        })
-
-        # Tooltip
         $storeTt = New-Object System.Windows.Controls.ToolTip
-        $storeTt.Content = "Bu uygulama Microsoft Store'dan kurulacak. Tıkla → Store açılır."
+        $storeTt.Content = "Bu uygulama doğrudan Microsoft Store üzerinden kurulacaktır."
         $storeTt.Background = Brush("#0F172A")
         $storeTt.Foreground = Brush("#818CF8")
         $storeBadge.ToolTip = $storeTt
@@ -4527,6 +4600,228 @@ function Trigger-FullStateRefresh {
 }
 
 # --- İŞLEM YÜRÜTME MOTORU (GELİŞMİŞ ÇIKIŞ VE HATA KONTROLÜ) ---
+function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
+    if (-not $queueToProcess -or $queueToProcess.Count -eq 0) { return $false }
+
+    $opTitle = ""
+    $opVerb = ""
+    $opAccent = "#10B981"
+    $opIcon = "🚀"
+
+    switch ($operation) {
+        "Kur" {
+            $opTitle = "Toplu Kurulum Onayı"
+            $opVerb = "bilgisayarınıza kurulacaktır"
+            $opAccent = "#10B981"
+            $opIcon = "🚀"
+        }
+        "Guncelle" {
+            $opTitle = "Toplu Güncelleme Onayı"
+            $opVerb = "en güncel sürüme yükseltilecektir"
+            $opAccent = "#0284C7"
+            $opIcon = "🔄"
+        }
+        "Kaldir" {
+            $opTitle = "Toplu Kaldırma Onayı"
+            $opVerb = "bilgisayarınızdan KALDIRILACAKTIR"
+            $opAccent = "#EF4444"
+            $opIcon = "🗑️"
+        }
+    }
+
+    $cWin = New-Object System.Windows.Window
+    $cWin.Title = $opTitle
+    $cWin.Width = 520
+    $cWin.Height = 520
+    $cWin.WindowStartupLocation = "CenterScreen"
+    $cWin.ResizeMode = "NoResize"
+    $cWin.WindowStyle = "None"
+    $cWin.AllowsTransparency = $true
+    $cWin.Background = [System.Windows.Media.Brushes]::Transparent
+    $cWin.ShowInTaskbar = $true
+
+    $mBorder = New-Object System.Windows.Controls.Border
+    $mBorder.CornerRadius = New-Object System.Windows.CornerRadius(12)
+    $mBorder.Background = if ($global:isDark) { Brush("#0A0F1A") } else { Brush("#FFFFFF") }
+    $mBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#CBD5E1") }
+    $mBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $mBorder.Padding = New-Object System.Windows.Thickness(20)
+
+    $mGrid = New-Object System.Windows.Controls.Grid
+    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto # Header
+    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star) # List
+    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto # Buttons
+    [void]$mGrid.RowDefinitions.Add($r0); [void]$mGrid.RowDefinitions.Add($r1); [void]$mGrid.RowDefinitions.Add($r2)
+
+    # 1. HEADER
+    $headSp = New-Object System.Windows.Controls.StackPanel
+    $headSp.Margin = New-Object System.Windows.Thickness(0, 0, 0, 14)
+
+    $hTopSp = New-Object System.Windows.Controls.StackPanel
+    $hTopSp.Orientation = "Horizontal"
+    $hIcoT = New-Object System.Windows.Controls.TextBlock; $hIcoT.Text = "$opIcon "; $hIcoT.FontSize = 20
+    $hTitleT = New-Object System.Windows.Controls.TextBlock; $hTitleT.Text = $opTitle; $hTitleT.FontSize = 17; $hTitleT.FontWeight = "Bold"
+    $hTitleT.Foreground = Brush($opAccent)
+    [void]$hTopSp.Children.Add($hIcoT); [void]$hTopSp.Children.Add($hTitleT)
+    [void]$headSp.Children.Add($hTopSp)
+
+    $hDescT = New-Object System.Windows.Controls.TextBlock
+    $hDescT.Text = "Seçilen $($queueToProcess.Count) uygulama $opVerb.`nYanlışlıkla işlem yapılmasını önlemek adına lütfen listeyi kontrol ediniz."
+    $hDescT.FontSize = 11.5
+    $hDescT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $hDescT.Margin = New-Object System.Windows.Thickness(0, 6, 0, 0)
+    $hDescT.TextWrapping = "Wrap"
+    [void]$headSp.Children.Add($hDescT)
+
+    [System.Windows.Controls.Grid]::SetRow($headSp, 0)
+    [void]$mGrid.Children.Add($headSp)
+
+    # 2. SCROLLABLE APP LIST WITH LOGOS
+    $listBorder = New-Object System.Windows.Controls.Border
+    $listBorder.Background = if ($global:isDark) { Brush("#111827") } else { Brush("#F8FAFC") }
+    $listBorder.BorderBrush = if ($global:isDark) { Brush("#1F2937") } else { Brush("#E2E8F0") }
+    $listBorder.BorderThickness = New-Object System.Windows.Thickness(1)
+    $listBorder.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $listBorder.Padding = New-Object System.Windows.Thickness(8)
+
+    $scroll = New-Object System.Windows.Controls.ScrollViewer
+    $scroll.VerticalScrollBarVisibility = "Auto"
+    $itemsSp = New-Object System.Windows.Controls.StackPanel
+
+    foreach ($card in $queueToProcess) {
+        $st = $card.Tag
+        $app = $st.App
+
+        $rowB = New-Object System.Windows.Controls.Border
+        $rowB.Background = if ($global:isDark) { Brush("#182234") } else { Brush("#FFFFFF") }
+        $rowB.BorderBrush = if ($global:isDark) { Brush("#23324A") } else { Brush("#E2E8F0") }
+        $rowB.BorderThickness = New-Object System.Windows.Thickness(1)
+        $rowB.CornerRadius = New-Object System.Windows.CornerRadius(6)
+        $rowB.Padding = New-Object System.Windows.Thickness(8, 6, 8, 6)
+        $rowB.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+
+        $rowGrid = New-Object System.Windows.Controls.Grid
+        $rc0 = New-Object System.Windows.Controls.ColumnDefinition; $rc0.Width = New-Object System.Windows.GridLength(32)
+        $rc1 = New-Object System.Windows.Controls.ColumnDefinition; $rc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+        $rc2 = New-Object System.Windows.Controls.ColumnDefinition; $rc2.Width = [System.Windows.GridLength]::Auto
+        [void]$rowGrid.ColumnDefinitions.Add($rc0); [void]$rowGrid.ColumnDefinitions.Add($rc1); [void]$rowGrid.ColumnDefinitions.Add($rc2)
+
+        # Logo
+        $logoImg = New-Object System.Windows.Controls.Image
+        $logoImg.Width = 22; $logoImg.Height = 22
+        $logoImg.HorizontalAlignment = "Left"; $logoImg.VerticalAlignment = "Center"
+        [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($logoImg, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+        if ($st.IconSource) {
+            $logoImg.Source = $st.IconSource
+        }
+        [System.Windows.Controls.Grid]::SetColumn($logoImg, 0)
+        [void]$rowGrid.Children.Add($logoImg)
+
+        # Name & Category
+        $infoSp = New-Object System.Windows.Controls.StackPanel
+        $infoSp.VerticalAlignment = "Center"
+        $nameT = New-Object System.Windows.Controls.TextBlock; $nameT.Text = $app.Name; $nameT.FontSize = 12; $nameT.FontWeight = "SemiBold"
+        $nameT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+        $catT = New-Object System.Windows.Controls.TextBlock; $catT.Text = $app.Cat; $catT.FontSize = 9.5
+        $catT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+        [void]$infoSp.Children.Add($nameT); [void]$infoSp.Children.Add($catT)
+        [System.Windows.Controls.Grid]::SetColumn($infoSp, 1)
+        [void]$rowGrid.Children.Add($infoSp)
+
+        # Source / Status tag
+        $tagB = New-Object System.Windows.Controls.Border
+        $tagB.CornerRadius = New-Object System.Windows.CornerRadius(4)
+        $tagB.Padding = New-Object System.Windows.Thickness(6, 2, 6, 2)
+        $tagB.VerticalAlignment = "Center"
+        $tagT = New-Object System.Windows.Controls.TextBlock; $tagT.FontSize = 9; $tagT.FontWeight = "Bold"
+        
+        $srcVal = if ($app.SelectedSource) { $app.SelectedSource } else { "Normal" }
+        if ($srcVal -eq "Store") {
+            $tagB.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+            $tagT.Text = "Store"
+            $tagT.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
+        } elseif ($srcVal -eq "Both") {
+            $tagB.Background = if ($global:isDark) { Brush("#1F2937") } else { Brush("#F1F5F9") }
+            $tagT.Text = "Normal + Store"
+            $tagT.Foreground = if ($global:isDark) { Brush("#CBD5E1") } else { Brush("#334155") }
+        } else {
+            $tagB.Background = if ($global:isDark) { Brush("#0C3247") } else { Brush("#E0F2FE") }
+            $tagT.Text = "Normal"
+            $tagT.Foreground = if ($global:isDark) { Brush("#7DD3FC") } else { Brush("#0369A1") }
+        }
+        $tagB.Child = $tagT
+        [System.Windows.Controls.Grid]::SetColumn($tagB, 2)
+        [void]$rowGrid.Children.Add($tagB)
+
+        $rowB.Child = $rowGrid
+        [void]$itemsSp.Children.Add($rowB)
+    }
+
+    $scroll.Content = $itemsSp
+    $listBorder.Child = $scroll
+    [System.Windows.Controls.Grid]::SetRow($listBorder, 1)
+    [void]$mGrid.Children.Add($listBorder)
+
+    # 3. ACTION BUTTONS (Evet / Hayır)
+    $btnGrid = New-Object System.Windows.Controls.Grid
+    $btnGrid.Margin = New-Object System.Windows.Thickness(0, 16, 0, 0)
+    $bc0 = New-Object System.Windows.Controls.ColumnDefinition; $bc0.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $bc1 = New-Object System.Windows.Controls.ColumnDefinition; $bc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    [void]$btnGrid.ColumnDefinitions.Add($bc0); [void]$btnGrid.ColumnDefinitions.Add($bc1)
+
+    $btnTpl = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.88"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.75"/></Trigger></ControlTemplate.Triggers></ControlTemplate>')
+
+    $script:confirmResult = $false
+
+    # Hayır / İptal
+    $btnNo = New-Object System.Windows.Controls.Button
+    $btnNo.Content = "✕ Hayır, İptal Et"
+    $btnNo.Padding = New-Object System.Windows.Thickness(14, 8, 14, 8)
+    $btnNo.FontSize = 12
+    $btnNo.FontWeight = "SemiBold"
+    $btnNo.Cursor = "Hand"
+    $btnNo.Template = $btnTpl
+    $btnNo.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#EDF2F7") }
+    $btnNo.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
+    $btnNo.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $btnNo.BorderThickness = New-Object System.Windows.Thickness(1)
+    $btnNo.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $btnNo.Add_Click({
+        $script:confirmResult = $false
+        $cWin.Close()
+    })
+    [System.Windows.Controls.Grid]::SetColumn($btnNo, 0)
+    [void]$btnGrid.Children.Add($btnNo)
+
+    # Evet / Onayla
+    $btnYes = New-Object System.Windows.Controls.Button
+    $btnYes.Content = "✓ Evet, Başlat"
+    $btnYes.Padding = New-Object System.Windows.Thickness(14, 8, 14, 8)
+    $btnYes.FontSize = 12.5
+    $btnYes.FontWeight = "Bold"
+    $btnYes.Cursor = "Hand"
+    $btnYes.Template = $btnTpl
+    $btnYes.Background = Brush($opAccent)
+    $btnYes.Foreground = Brush("#FFFFFF")
+    $btnYes.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnYes.Margin = New-Object System.Windows.Thickness(6, 0, 0, 0)
+    $btnYes.Add_Click({
+        $script:confirmResult = $true
+        $cWin.Close()
+    })
+    [System.Windows.Controls.Grid]::SetColumn($btnYes, 1)
+    [void]$btnGrid.Children.Add($btnYes)
+
+    [System.Windows.Controls.Grid]::SetRow($btnGrid, 2)
+    [void]$mGrid.Children.Add($btnGrid)
+
+    $mBorder.Child = $mGrid
+    $cWin.Content = $mBorder
+    [void]$cWin.ShowDialog()
+
+    return $script:confirmResult
+}
+
 function Invoke-BatchOperation([string]$operation) {
     if ($global:isBusy -or $global:selectedQueue.Count -eq 0) { return }
 
@@ -4546,6 +4841,13 @@ function Invoke-BatchOperation([string]$operation) {
 
     if ($queueToProcess.Count -eq 0) {
         Show-ModernAlert "Uyarı" "Seçilenler arasında [$operation] işlemi yapılabilecek uygun bir uygulama bulunmuyor." "WARN"
+        return
+    }
+
+    # Guvenlik ve Yanlislik Onleme: Islem Onay Penceresi (Evet / Hayir + Program Logolari)
+    $userConfirmed = Show-BatchConfirmDialog $operation $queueToProcess
+    if (-not $userConfirmed) {
+        Set-Status "İşlem kullanıcı tarafından iptal edildi." "INFO"
         return
     }
 
