@@ -2898,19 +2898,54 @@ function Show-ModernAlert([string]$title, [string]$message, [string]$kind = "WAR
     $colTxt = New-Object System.Windows.Controls.ColumnDefinition; $colTxt.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     [void]$gridHead.ColumnDefinitions.Add($colIco); [void]$gridHead.ColumnDefinitions.Add($colTxt)
 
-    $ico = New-Object System.Windows.Controls.TextBlock
-    $ico.Text = if ($kind -eq "ERR") { [char]0x26A0 } else { [char]0x2139 }
-    $ico.FontSize = 24
-    $ico.Margin = New-Object System.Windows.Thickness(0,0,12,0)
-    [System.Windows.Controls.Grid]::SetColumn($ico, 0)
-    [void]$gridHead.Children.Add($ico)
+    $icoBorder = New-Object System.Windows.Controls.Border
+    $icoBorder.Width = 38
+    $icoBorder.Height = 38
+    $icoBorder.CornerRadius = New-Object System.Windows.CornerRadius(19)
+    $icoBorder.Margin = New-Object System.Windows.Thickness(0,0,14,0)
+    $icoBorder.VerticalAlignment = "Center"
+
+    $icoTxt = New-Object System.Windows.Controls.TextBlock
+    $icoTxt.FontSize = 18
+    $icoTxt.FontWeight = "Bold"
+    $icoTxt.FontFamily = New-Object System.Windows.Media.FontFamily("Segoe UI, Arial")
+    $icoTxt.HorizontalAlignment = "Center"
+    $icoTxt.VerticalAlignment = "Center"
 
     $tBox = New-Object System.Windows.Controls.StackPanel
     $tTitle = New-Object System.Windows.Controls.TextBlock
     $tTitle.Text = $title
-    $tTitle.FontSize = 13.5
+    $tTitle.FontSize = 14
     $tTitle.FontWeight = "Bold"
-    $tTitle.Foreground = if ($kind -eq "ERR") { Brush("#EF4444") } else { Brush("#3B82F6") }
+
+    if ($kind -in @("OK", "SUCCESS") -or $title -match 'Tamamlandı|Başarılı|Hazır|Aktifleştirildi|Güncel') {
+        # YESIL TIK ISARETI (Resim 1 Duzeltmesi)
+        $icoBorder.Background = if ($global:isDark) { Brush("#064E3B") } else { Brush("#DCFCE7") }
+        $icoBorder.BorderBrush = Brush("#10B981")
+        $icoBorder.BorderThickness = New-Object System.Windows.Thickness(1.8)
+        $icoTxt.Text = "✓"
+        $icoTxt.Foreground = Brush("#10B981")
+        $tTitle.Foreground = if ($global:isDark) { Brush("#34D399") } else { Brush("#059669") }
+    } elseif ($kind -in @("ERR", "ERROR") -or $title -match 'Hata|Başarısız') {
+        # KIRMIZI CARPI ISARETI (Resim 1 Duzeltmesi)
+        $icoBorder.Background = if ($global:isDark) { Brush("#450A0A") } else { Brush("#FEE2E2") }
+        $icoBorder.BorderBrush = Brush("#EF4444")
+        $icoBorder.BorderThickness = New-Object System.Windows.Thickness(1.8)
+        $icoTxt.Text = "✕"
+        $icoTxt.Foreground = Brush("#EF4444")
+        $tTitle.Foreground = Brush("#EF4444")
+    } else {
+        # SARI UYARI ISARETI
+        $icoBorder.Background = if ($global:isDark) { Brush("#451A03") } else { Brush("#FEF3C7") }
+        $icoBorder.BorderBrush = Brush("#F59E0B")
+        $icoBorder.BorderThickness = New-Object System.Windows.Thickness(1.8)
+        $icoTxt.Text = "!"
+        $icoTxt.Foreground = Brush("#F59E0B")
+        $tTitle.Foreground = Brush("#F59E0B")
+    }
+    $icoBorder.Child = $icoTxt
+    [System.Windows.Controls.Grid]::SetColumn($icoBorder, 0)
+    [void]$gridHead.Children.Add($icoBorder)
 
     $tMsg = New-Object System.Windows.Controls.TextBlock
     $tMsg.Text = $message
@@ -5070,6 +5105,356 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     return $script:confirmResult
 }
 
+# --- REVO UNINSTALLER TARZI DERIN KALINTI TEMIZLEME SISTEMI ---
+function Show-RevoDeepCleanModal([string]$appName, [string]$appId = "", [string]$appSlug = "") {
+    $cleanTokens = [System.Collections.Generic.List[string]]::new()
+    
+    # Isimden arama anahtarlari cikar
+    $cleanName = $appName -replace '[^a-zA-Z0-9]', ' '
+    $words = $cleanName.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | Where-Object { $_.Length -ge 3 }
+    foreach ($w in $words) {
+        $skipWords = @("Microsoft", "Google", "Mozilla", "Desktop", "Edition", "Setup", "Installer", "Client", "Launcher", "Pack", "Tools")
+        if ($w -notin $skipWords -and -not $cleanTokens.Contains($w.ToLowerInvariant())) {
+            $cleanTokens.Add($w.ToLowerInvariant())
+        }
+    }
+    if ($appSlug -and $appSlug.Length -ge 3 -and -not $cleanTokens.Contains($appSlug.ToLowerInvariant())) {
+        $cleanTokens.Add($appSlug.ToLowerInvariant())
+    }
+    if ($cleanTokens.Count -eq 0) { $cleanTokens.Add($appName.ToLowerInvariant()) }
+
+    # Bulunan dosya/klasor ve registry ogeleri
+    $foundFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
+    $foundRegs  = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+    # 1. Dosya & Klasor Taramasi
+    $scanDirs = @(
+        $env:APPDATA,
+        $env:LOCALAPPDATA,
+        $env:ProgramData,
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)},
+        (Join-Path $env:USERPROFILE ".config")
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($dir in $scanDirs) {
+        try {
+            $subItems = Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue
+            foreach ($sub in $subItems) {
+                $subNameLow = $sub.Name.ToLowerInvariant()
+                # Windows veya temel sistem klasorlerini asla silme
+                if ($subNameLow -in @("windows", "microsoft", "temp", "system32", "common files", "packages")) { continue }
+
+                foreach ($token in $cleanTokens) {
+                    if ($subNameLow -like "*$token*") {
+                        # Boyut hesapla
+                        $sizeStr = ""
+                        try {
+                            $bytes = (Get-ChildItem -LiteralPath $sub.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                            if ($bytes -gt 0) {
+                                if ($bytes -ge 1GB) { $sizeStr = "$([Math]::Round($bytes / 1GB, 1)) GB" }
+                                elseif ($bytes -ge 1MB) { $sizeStr = "$([Math]::Round($bytes / 1MB, 1)) MB" }
+                                else { $sizeStr = "$([Math]::Round($bytes / 1KB, 1)) KB" }
+                            }
+                        } catch {}
+
+                        $alreadyAdded = $false
+                        foreach ($ff in $foundFiles) { if ($ff.Path -eq $sub.FullName) { $alreadyAdded = $true; break } }
+                        if (-not $alreadyAdded) {
+                            $foundFiles.Add([PSCustomObject]@{
+                                Type      = "Klasör"
+                                Path      = $sub.FullName
+                                Extra     = $sizeStr
+                                IsChecked = $true
+                            })
+                        }
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    # 2. Kayit Defteri (Registry) Taramasi
+    $regRoots = @(
+        "HKCU:\Software",
+        "HKLM:\Software",
+        "HKLM:\Software\WOW6432Node"
+    )
+
+    foreach ($regRoot in $regRoots) {
+        if (-not (Test-Path $regRoot)) { continue }
+        try {
+            $regKeys = Get-ChildItem -Path $regRoot -ErrorAction SilentlyContinue
+            foreach ($rk in $regKeys) {
+                $kName = [System.IO.Path]::GetFileName($rk.Name)
+                $kNameLow = $kName.ToLowerInvariant()
+                if ($kNameLow -in @("microsoft", "classes", "policies", "registeredapplications", "windows")) { continue }
+
+                foreach ($token in $cleanTokens) {
+                    if ($kNameLow -like "*$token*") {
+                        $alreadyAdded = $false
+                        foreach ($rr in $foundRegs) { if ($rr.Path -eq $rk.Name) { $alreadyAdded = $true; break } }
+                        if (-not $alreadyAdded) {
+                            $foundRegs.Add([PSCustomObject]@{
+                                Type      = "Kayıt Defteri"
+                                Path      = $rk.Name
+                                Extra     = "$($rk.SubKeyCount) alt anahtar"
+                                IsChecked = $true
+                            })
+                        }
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    # Revo Temizlik Penceresi (WPF)
+    $revoWin = New-Object System.Windows.Window
+    $revoWin.Title = "Revo Derin Kalıntı Temizleyici - $appName"
+    $revoWin.Width = 680
+    $revoWin.Height = 600
+    $revoWin.WindowStartupLocation = "CenterScreen"
+    $revoWin.Background = if ($global:isDark) { Brush("#090D16") } else { Brush("#F8FAFC") }
+    $revoWin.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+    $revoWin.ResizeMode = "CanResizeWithGrip"
+    $revoWin.MinWidth = 550
+    $revoWin.MinHeight = 450
+    try { if ($window -and $window.IsVisible) { $revoWin.Owner = $window } } catch {}
+
+    $mainGrid = New-Object System.Windows.Controls.Grid
+    $mainGrid.Margin = New-Object System.Windows.Thickness(20)
+    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
+    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto
+    [void]$mainGrid.RowDefinitions.Add($r0); [void]$mainGrid.RowDefinitions.Add($r1); [void]$mainGrid.RowDefinitions.Add($r2)
+
+    # Header
+    $headSp = New-Object System.Windows.Controls.StackPanel
+    $hTop = New-Object System.Windows.Controls.Grid
+    $hCol0 = New-Object System.Windows.Controls.ColumnDefinition; $hCol0.Width = [System.Windows.GridLength]::Auto
+    $hCol1 = New-Object System.Windows.Controls.ColumnDefinition; $hCol1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    [void]$hTop.ColumnDefinitions.Add($hCol0); [void]$hTop.ColumnDefinitions.Add($hCol1)
+
+    $revoIco = New-Object System.Windows.Controls.Border
+    $revoIco.Width = 44; $revoIco.Height = 44; $revoIco.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $revoIco.Background = if ($global:isDark) { Brush("#1E1B4B") } else { Brush("#EDE9FE") }
+    $revoIco.BorderBrush = Brush("#7C3AED"); $revoIco.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $revoIco.Margin = New-Object System.Windows.Thickness(0,0,14,0)
+    $revoIcoTxt = New-Object System.Windows.Controls.TextBlock; $revoIcoTxt.Text = "🧹"; $revoIcoTxt.FontSize = 22
+    $revoIcoTxt.HorizontalAlignment = "Center"; $revoIcoTxt.VerticalAlignment = "Center"
+    $revoIco.Child = $revoIcoTxt
+    [System.Windows.Controls.Grid]::SetColumn($revoIco, 0); [void]$hTop.Children.Add($revoIco)
+
+    $hTitleSp = New-Object System.Windows.Controls.StackPanel
+    $hMainT = New-Object System.Windows.Controls.TextBlock; $hMainT.Text = "Revo Derin Kalıntı Temizleyici"; $hMainT.FontSize = 16; $hMainT.FontWeight = "Bold"; $hMainT.Foreground = Brush("#A78BFA")
+    $hSubT = New-Object System.Windows.Controls.TextBlock; $hSubT.Text = "'$appName' kaldırıldı. Geride kalan artık dosya ve kayıt defteri girdilerini seçerek temizleyebilirsiniz."; $hSubT.FontSize = 11; $hSubT.Foreground = Brush("#94A3B8"); $hSubT.TextWrapping = "Wrap"; $hSubT.Margin = New-Object System.Windows.Thickness(0,2,0,0)
+    [void]$hTitleSp.Children.Add($hMainT); [void]$hTitleSp.Children.Add($hSubT)
+    [System.Windows.Controls.Grid]::SetColumn($hTitleSp, 1); [void]$hTop.Children.Add($hTitleSp)
+    [void]$headSp.Children.Add($hTop)
+
+    $totFound = $foundFiles.Count + $foundRegs.Count
+    $statTxt = New-Object System.Windows.Controls.TextBlock
+    $statTxt.Text = "Tespit Edilen Kalıntılar: $($foundFiles.Count) klasör/dosya, $($foundRegs.Count) kayıt defteri anahtarı"
+    $statTxt.FontSize = 11.5; $statTxt.FontWeight = "SemiBold"
+    $statTxt.Foreground = if ($totFound -gt 0) { Brush("#F59E0B") } else { Brush("#10B981") }
+    $statTxt.Margin = New-Object System.Windows.Thickness(0,12,0,8)
+    [void]$headSp.Children.Add($statTxt)
+
+    [System.Windows.Controls.Grid]::SetRow($headSp, 0); [void]$mainGrid.Children.Add($headSp)
+
+    # Content List (Scrollable)
+    $listBorder = New-Object System.Windows.Controls.Border
+    $listBorder.Background = if ($global:isDark) { Brush("#0E131F") } else { Brush("#FFFFFF") }
+    $listBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $listBorder.BorderThickness = New-Object System.Windows.Thickness(1)
+    $listBorder.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $listBorder.Padding = New-Object System.Windows.Thickness(10)
+    $listBorder.Margin = New-Object System.Windows.Thickness(0,0,0,14)
+
+    $scroll = New-Object System.Windows.Controls.ScrollViewer
+    $scroll.VerticalScrollBarVisibility = "Auto"
+    $itemsPanel = New-Object System.Windows.Controls.StackPanel
+    $scroll.Content = $itemsPanel
+    $listBorder.Child = $scroll
+
+    $allCheckboxes = [System.Collections.Generic.List[System.Windows.Controls.CheckBox]]::new()
+
+    if ($totFound -eq 0) {
+        $noResSp = New-Object System.Windows.Controls.StackPanel
+        $noResSp.VerticalAlignment = "Center"; $noResSp.HorizontalAlignment = "Center"
+        $noResSp.Margin = New-Object System.Windows.Thickness(0, 40, 0, 40)
+        $noResIco = New-Object System.Windows.Controls.TextBlock; $noResIco.Text = "✓"; $noResIco.FontSize = 36; $noResIco.Foreground = Brush("#10B981"); $noResIco.HorizontalAlignment = "Center"
+        $noResTxt = New-Object System.Windows.Controls.TextBlock; $noResTxt.Text = "Sistemde bu uygulamaya ait herhangi bir kalıntı bulunamadı.`nSisteminiz tamamen temiz!"; $noResTxt.FontSize = 12; $noResTxt.FontWeight = "SemiBold"; $noResTxt.Foreground = Brush("#10B981"); $noResTxt.TextAlignment = "Center"; $noResTxt.Margin = New-Object System.Windows.Thickness(0,8,0,0)
+        [void]$noResSp.Children.Add($noResIco); [void]$noResSp.Children.Add($noResTxt)
+        [void]$itemsPanel.Children.Add($noResSp)
+    } else {
+        # Dosyalar bolumu
+        if ($foundFiles.Count -gt 0) {
+            $fSecHeader = New-Object System.Windows.Controls.TextBlock
+            $fSecHeader.Text = "📁  DOSYA VE KLASÖR KALINTILARI ($($foundFiles.Count))"
+            $fSecHeader.FontSize = 11; $fSecHeader.FontWeight = "Bold"; $fSecHeader.Foreground = Brush("#38BDF8")
+            $fSecHeader.Margin = New-Object System.Windows.Thickness(4, 4, 0, 6)
+            [void]$itemsPanel.Children.Add($fSecHeader)
+
+            foreach ($fileObj in $foundFiles) {
+                $rowGrid = New-Object System.Windows.Controls.Grid
+                $rowGrid.Margin = New-Object System.Windows.Thickness(4, 2, 4, 2)
+                $rc0 = New-Object System.Windows.Controls.ColumnDefinition; $rc0.Width = [System.Windows.GridLength]::Auto
+                $rc1 = New-Object System.Windows.Controls.ColumnDefinition; $rc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+                $rc2 = New-Object System.Windows.Controls.ColumnDefinition; $rc2.Width = [System.Windows.GridLength]::Auto
+                [void]$rowGrid.ColumnDefinitions.Add($rc0); [void]$rowGrid.ColumnDefinitions.Add($rc1); [void]$rowGrid.ColumnDefinitions.Add($rc2)
+
+                $chk = New-Object System.Windows.Controls.CheckBox
+                $chk.IsChecked = $true
+                $chk.VerticalAlignment = "Center"; $chk.Margin = New-Object System.Windows.Thickness(0,0,8,0)
+                $chk.Tag = @{ Type = "File"; Path = $fileObj.Path }
+                $allCheckboxes.Add($chk)
+                [System.Windows.Controls.Grid]::SetColumn($chk, 0); [void]$rowGrid.Children.Add($chk)
+
+                $pTxt = New-Object System.Windows.Controls.TextBlock
+                $pTxt.Text = $fileObj.Path
+                $pTxt.FontSize = 10.5; $pTxt.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+                $pTxt.TextTrimming = "CharacterEllipsis"; $pTxt.VerticalAlignment = "Center"
+                $pTxt.ToolTip = $fileObj.Path
+                [System.Windows.Controls.Grid]::SetColumn($pTxt, 1); [void]$rowGrid.Children.Add($pTxt)
+
+                if ($fileObj.Extra) {
+                    $sTxt = New-Object System.Windows.Controls.TextBlock
+                    $sTxt.Text = $fileObj.Extra; $sTxt.FontSize = 10; $sTxt.Foreground = Brush("#94A3B8"); $sTxt.VerticalAlignment = "Center"; $sTxt.Margin = New-Object System.Windows.Thickness(8,0,0,0)
+                    [System.Windows.Controls.Grid]::SetColumn($sTxt, 2); [void]$rowGrid.Children.Add($sTxt)
+                }
+                [void]$itemsPanel.Children.Add($rowGrid)
+            }
+        }
+
+        # Registry bolumu
+        if ($foundRegs.Count -gt 0) {
+            $rSecHeader = New-Object System.Windows.Controls.TextBlock
+            $rSecHeader.Text = "🗝️  KAYIT DEFTERİ (REGISTRY) KALINTILARI ($($foundRegs.Count))"
+            $rSecHeader.FontSize = 11; $rSecHeader.FontWeight = "Bold"; $rSecHeader.Foreground = Brush("#F472B6")
+            $rSecHeader.Margin = New-Object System.Windows.Thickness(4, 14, 0, 6)
+            [void]$itemsPanel.Children.Add($rSecHeader)
+
+            foreach ($regObj in $foundRegs) {
+                $rowGrid = New-Object System.Windows.Controls.Grid
+                $rowGrid.Margin = New-Object System.Windows.Thickness(4, 2, 4, 2)
+                $rc0 = New-Object System.Windows.Controls.ColumnDefinition; $rc0.Width = [System.Windows.GridLength]::Auto
+                $rc1 = New-Object System.Windows.Controls.ColumnDefinition; $rc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+                $rc2 = New-Object System.Windows.Controls.ColumnDefinition; $rc2.Width = [System.Windows.GridLength]::Auto
+                [void]$rowGrid.ColumnDefinitions.Add($rc0); [void]$rowGrid.ColumnDefinitions.Add($rc1); [void]$rowGrid.ColumnDefinitions.Add($rc2)
+
+                $chk = New-Object System.Windows.Controls.CheckBox
+                $chk.IsChecked = $true
+                $chk.VerticalAlignment = "Center"; $chk.Margin = New-Object System.Windows.Thickness(0,0,8,0)
+                $chk.Tag = @{ Type = "Reg"; Path = $regObj.Path }
+                $allCheckboxes.Add($chk)
+                [System.Windows.Controls.Grid]::SetColumn($chk, 0); [void]$rowGrid.Children.Add($chk)
+
+                $pTxt = New-Object System.Windows.Controls.TextBlock
+                $pTxt.Text = $regObj.Path
+                $pTxt.FontSize = 10.5; $pTxt.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+                $pTxt.TextTrimming = "CharacterEllipsis"; $pTxt.VerticalAlignment = "Center"
+                $pTxt.ToolTip = $regObj.Path
+                [System.Windows.Controls.Grid]::SetColumn($pTxt, 1); [void]$rowGrid.Children.Add($pTxt)
+
+                if ($regObj.Extra) {
+                    $sTxt = New-Object System.Windows.Controls.TextBlock
+                    $sTxt.Text = $regObj.Extra; $sTxt.FontSize = 10; $sTxt.Foreground = Brush("#94A3B8"); $sTxt.VerticalAlignment = "Center"; $sTxt.Margin = New-Object System.Windows.Thickness(8,0,0,0)
+                    [System.Windows.Controls.Grid]::SetColumn($sTxt, 2); [void]$rowGrid.Children.Add($sTxt)
+                }
+                [void]$itemsPanel.Children.Add($rowGrid)
+            }
+        }
+    }
+
+    [System.Windows.Controls.Grid]::SetRow($listBorder, 1); [void]$mainGrid.Children.Add($listBorder)
+
+    # Footer Actions
+    $footGrid = New-Object System.Windows.Controls.Grid
+    $fc0 = New-Object System.Windows.Controls.ColumnDefinition; $fc0.Width = [System.Windows.GridLength]::Auto
+    $fc1 = New-Object System.Windows.Controls.ColumnDefinition; $fc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $fc2 = New-Object System.Windows.Controls.ColumnDefinition; $fc2.Width = [System.Windows.GridLength]::Auto
+    [void]$footGrid.ColumnDefinitions.Add($fc0); [void]$footGrid.ColumnDefinitions.Add($fc1); [void]$footGrid.ColumnDefinitions.Add($fc2)
+
+    # Tumunu sec / birak
+    $btnToggleAll = New-Object System.Windows.Controls.Button
+    $btnToggleAll.Content = "Tümünü Seç / Bırak"
+    $btnToggleAll.Padding = New-Object System.Windows.Thickness(12, 6, 12, 6)
+    $btnToggleAll.Background = Brush("Transparent")
+    $btnToggleAll.Foreground = Brush("#38BDF8")
+    $btnToggleAll.BorderBrush = Brush("#0284C7"); $btnToggleAll.BorderThickness = New-Object System.Windows.Thickness(1)
+    $btnToggleAll.Cursor = "Hand"
+    $btnToggleAll.Tag = $true
+    $btnToggleAll.Add_Click({
+        param($s,$e)
+        $newState = -not $s.Tag
+        $s.Tag = $newState
+        foreach ($cb in $allCheckboxes) { $cb.IsChecked = $newState }
+    })
+    [System.Windows.Controls.Grid]::SetColumn($btnToggleAll, 0); [void]$footGrid.Children.Add($btnToggleAll)
+
+    $rightBtns = New-Object System.Windows.Controls.StackPanel
+    $rightBtns.Orientation = "Horizontal"
+    $rightBtns.HorizontalAlignment = "Right"
+
+    # Sil butonu
+    if ($totFound -gt 0) {
+        $btnClean = New-Object System.Windows.Controls.Button
+        $btnClean.Content = "🗑️  Seçilen Kalıntıları Temizle"
+        $btnClean.Padding = New-Object System.Windows.Thickness(16, 7, 16, 7)
+        $btnClean.Background = Brush("#DC2626")
+        $btnClean.Foreground = Brush("#FFFFFF")
+        $btnClean.FontWeight = "Bold"
+        $btnClean.BorderThickness = New-Object System.Windows.Thickness(0)
+        $btnClean.Cursor = "Hand"
+        $btnClean.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+        $btnClean.Add_Click({
+            param($s,$e)
+            $delFiles = 0; $delRegs = 0
+            foreach ($cb in $allCheckboxes) {
+                if ($cb.IsChecked) {
+                    $item = $cb.Tag
+                    if ($item.Type -eq "File") {
+                        try {
+                            Remove-Item -LiteralPath $item.Path -Recurse -Force -ErrorAction SilentlyContinue
+                            $delFiles++
+                        } catch {}
+                    } elseif ($item.Type -eq "Reg") {
+                        try {
+                            # Convert Registry path if needed
+                            $regP = $item.Path
+                            if ($regP.StartsWith("HKEY_CURRENT_USER\")) { $regP = $regP.Replace("HKEY_CURRENT_USER\", "HKCU:\") }
+                            if ($regP.StartsWith("HKEY_LOCAL_MACHINE\")) { $regP = $regP.Replace("HKEY_LOCAL_MACHINE\", "HKLM:\") }
+                            Remove-Item -Path $regP -Recurse -Force -ErrorAction SilentlyContinue
+                            $delRegs++
+                        } catch {}
+                    }
+                }
+            }
+            $revoWin.Close()
+            Show-ModernAlert "Derin Temizlik Tamamlandı" "$appName uygulamasına ait $delFiles klasör/dosya ve $delRegs kayıt defteri girdisi başarıyla silindi." "OK"
+        })
+        [void]$rightBtns.Children.Add($btnClean)
+    }
+
+    # Kapat / Atla
+    $btnClose = New-Object System.Windows.Controls.Button
+    $btnClose.Content = if ($totFound -gt 0) { "✕ Atla" } else { "Kapat" }
+    $btnClose.Padding = New-Object System.Windows.Thickness(14, 7, 14, 7)
+    $btnClose.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $btnClose.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+    $btnClose.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnClose.Cursor = "Hand"
+    $btnClose.Add_Click({ $revoWin.Close() })
+    [void]$rightBtns.Children.Add($btnClose)
+
+    [System.Windows.Controls.Grid]::SetColumn($rightBtns, 2); [void]$footGrid.Children.Add($rightBtns)
+    [System.Windows.Controls.Grid]::SetRow($footGrid, 2); [void]$mainGrid.Children.Add($footGrid)
+
+    $revoWin.Content = $mainGrid
+    [void]$revoWin.ShowDialog()
+}
+
 function Invoke-BatchOperation([string]$operation) {
     if ($global:isBusy -or $global:selectedQueue.Count -eq 0) { return }
 
@@ -5419,6 +5804,20 @@ function Invoke-BatchOperation([string]$operation) {
                         break
                     }
                 }
+
+                # REVO UNINSTALLER MODU SORUSU:
+                # Kullanıcıya geride kalan klasör ve kayıt defteri artıklarını temizlemek isteyip istemediğini sor
+                try {
+                    $askRevo = [System.Windows.MessageBox]::Show(
+                        "'$($app.Name)' kaldırma işlemi tamamlandı.`n`nRevo Uninstaller tarzı derin tarama yaparak geride kalan tüm artık klasörleri ve Kayıt Defteri (Registry) kalıntılarını temizlemek ister misiniz?",
+                        "Revo Derin Kaldırma ve Kalıntı Temizleyici",
+                        [System.Windows.MessageBoxButton]::YesNo,
+                        [System.Windows.MessageBoxImage]::Question
+                    )
+                    if ($askRevo -eq [System.Windows.MessageBoxResult]::Yes) {
+                        Show-RevoDeepCleanModal $app.Name $app.Id $app.Slug
+                    }
+                } catch {}
             }
 
             # Hash Uyuşmazlığı durumunda (üretici yeni sürüm yayınlamış ama winget manifesti eski kalmış)
@@ -5527,7 +5926,7 @@ function Invoke-BatchOperation([string]$operation) {
 
         if ($failedCount -eq 0) {
             Set-Status "$successCount/$total işlem başarıyla tamamlandı." "OK"
-            Show-ModernAlert "İşlem Tamamlandı" "$successCount uygulama başarıyla işlendi." "INFO"
+            Show-ModernAlert "İşlem Tamamlandı" "$successCount uygulama başarıyla işlendi." "OK"
         }
         else {
             $failedList = ($failedApps -join ", ")
@@ -5876,7 +6275,8 @@ function Show-DefenderSecurityModal {
     $sc0 = New-Object System.Windows.Controls.ColumnDefinition; $sc0.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     $sc1 = New-Object System.Windows.Controls.ColumnDefinition; $sc1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     $sc2 = New-Object System.Windows.Controls.ColumnDefinition; $sc2.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
-    [void]$statGrid.ColumnDefinitions.Add($sc0); [void]$statGrid.ColumnDefinitions.Add($sc1); [void]$statGrid.ColumnDefinitions.Add($sc2)
+    $sc3 = New-Object System.Windows.Controls.ColumnDefinition; $sc3.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    [void]$statGrid.ColumnDefinitions.Add($sc0); [void]$statGrid.ColumnDefinitions.Add($sc1); [void]$statGrid.ColumnDefinitions.Add($sc2); [void]$statGrid.ColumnDefinitions.Add($sc3)
 
     # Status Column 1: Shield
     $sCol1Sp = New-Object System.Windows.Controls.StackPanel
@@ -5898,6 +6298,13 @@ function Show-DefenderSecurityModal {
     $sCol3Val = New-Object System.Windows.Controls.TextBlock; $sCol3Val.Text = "00:00"; $sCol3Val.FontSize = 12.5; $sCol3Val.FontWeight = "Bold"; $sCol3Val.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }; $sCol3Val.Margin = New-Object System.Windows.Thickness(0,2,0,0)
     [void]$sCol3Sp.Children.Add($sCol3Lbl); [void]$sCol3Sp.Children.Add($sCol3Val)
     [System.Windows.Controls.Grid]::SetColumn($sCol3Sp, 2); [void]$statGrid.Children.Add($sCol3Sp)
+
+    # Status Column 4: Estimated Remaining Time (Resim 2 Duzeltmesi)
+    $sCol4Sp = New-Object System.Windows.Controls.StackPanel
+    $sCol4Lbl = New-Object System.Windows.Controls.TextBlock; $sCol4Lbl.Text = "TAHMİNİ KALAN"; $sCol4Lbl.FontSize = 10; $sCol4Lbl.FontWeight = "Bold"; $sCol4Lbl.Foreground = Brush("#94A3B8")
+    $sCol4Val = New-Object System.Windows.Controls.TextBlock; $sCol4Val.Text = "--:--"; $sCol4Val.FontSize = 12.5; $sCol4Val.FontWeight = "Bold"; $sCol4Val.Foreground = Brush("#38BDF8"); $sCol4Val.Margin = New-Object System.Windows.Thickness(0,2,0,0)
+    [void]$sCol4Sp.Children.Add($sCol4Lbl); [void]$sCol4Sp.Children.Add($sCol4Val)
+    [System.Windows.Controls.Grid]::SetColumn($sCol4Sp, 3); [void]$statGrid.Children.Add($sCol4Sp)
 
     $statBorder.Child = $statGrid
     [System.Windows.Controls.Grid]::SetRow($statBorder, 1)
@@ -6037,7 +6444,7 @@ function Show-DefenderSecurityModal {
         $global:activeDefenderProc = $null
         $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
         $pBar.Visibility = [System.Windows.Visibility]::Collapsed
-        $sCol1Val.Text = "● Tarama Durduruldu"; $sCol1Val.Foreground = Brush("#EF4444")
+        $sCol1Val.Text = "● Tarama Durduruldu"; $sCol1Val.Foreground = Brush("#EF4444"); $sCol4Val.Text = "Durduruldu"; $sCol4Val.Foreground = Brush("#EF4444")
         $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] Tarama kullanıcı tarafından durduruldu.`n"
         $txtLog.ScrollToEnd()
         $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed
@@ -6090,6 +6497,34 @@ function Show-DefenderSecurityModal {
         $s = $elapsedSec % 60
         $sCol3Val.Text = "{0:D2}:{1:D2}" -f [int]$m, [int]$s
 
+        # Canli Tahmini Kalan Sure Hesaplama (Resim 2)
+        if ($global:activeDefenderAction -match 'Hızlı') {
+            $targetSec = 85
+            if ($elapsedSec -lt $targetSec) {
+                $rem = $targetSec - $elapsedSec
+                $remM = [Math]::Floor($rem / 60)
+                $remS = $rem % 60
+                $sCol4Val.Text = "~{0:D2}:{1:D2}" -f [int]$remM, [int]$remS
+                $sCol4Val.Foreground = Brush("#38BDF8")
+            } else {
+                $sCol4Val.Text = "Tamamlanıyor..."
+                $sCol4Val.Foreground = Brush("#F59E0B")
+            }
+        } elseif ($global:activeDefenderAction -match 'İmza') {
+            $targetSec = 25
+            if ($elapsedSec -lt $targetSec) {
+                $rem = $targetSec - $elapsedSec
+                $sCol4Val.Text = "~00:{0:D2}" -f [int]$rem
+                $sCol4Val.Foreground = Brush("#38BDF8")
+            } else {
+                $sCol4Val.Text = "Uygulanıyor..."
+                $sCol4Val.Foreground = Brush("#F59E0B")
+            }
+        } else {
+            $sCol4Val.Text = "Taranıyor..."
+            $sCol4Val.Foreground = Brush("#38BDF8")
+        }
+
         if ($global:activeDefenderProc) {
             if ($global:activeDefenderProc.HasExited) {
                 $timer.Stop()
@@ -6114,7 +6549,7 @@ function Show-DefenderSecurityModal {
                 }
 
                 if ($errCode -eq 0) {
-                    $sCol1Val.Text = "● Koruma Aktif (Temiz)"; $sCol1Val.Foreground = Brush("#10B981")
+                    $sCol1Val.Text = "● Koruma Aktif (Temiz)"; $sCol1Val.Foreground = Brush("#10B981"); $sCol4Val.Text = "Tamamlandı"; $sCol4Val.Foreground = Brush("#10B981")
                     $sCol2Val.Text = "0 Tehdit"; $sCol2Val.Foreground = Brush("#10B981")
                     $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($global:activeDefenderAction) başarıyla tamamlandı. Tehdit tespit edilmedi.`n"
                 } elseif ($errCode -eq 2) {
@@ -7805,9 +8240,7 @@ $btnOpenToolsModal.Add_Click({
         [void]$sp.Children.Add($cBorder)
     }
 
-    Add-ModernToolCard "🧹" "Sistem & Disk Temizleyici" "Temp, Prefetch, çöp kutusu, güncelleme önbelleği ve gereksiz sistem kalıntılarını temizler." "Temizle" "#10B981" {
-        Show-DiskCleanerModal
-    }
+# Sistem & Disk Temizleyici kartı araçlar penceresinden kaldırıldı (Ana ekranda zaten mevcuttur)
 
     Add-ModernToolCard "🔄" "Windows Güncellemelerini Denetle" "Resmi Windows Update ayarlarını açar ve tarama yapar." "Aç" "#2563EB" {
         Start-Process "ms-settings:windowsupdate"
