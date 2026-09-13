@@ -5454,10 +5454,43 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
 
     $hTopSp = New-Object System.Windows.Controls.StackPanel
     $hTopSp.Orientation = "Horizontal"
-    $hIcoT = New-Object System.Windows.Controls.TextBlock; $hIcoT.Text = "$opIcon "; $hIcoT.FontSize = 20
+
+    $badgeBorder = New-Object System.Windows.Controls.Border
+    $badgeBorder.Width = 36; $badgeBorder.Height = 36
+    $badgeBorder.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $badgeBorder.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+    $badgeBorder.VerticalAlignment = "Center"
+
+    if ($operation -eq "Kaldir") {
+        $badgeBorder.Background = if ($global:isDark) { Brush("#331215") } else { Brush("#FEE2E2") }
+        $badgeBorder.BorderBrush = Brush("#EF4444")
+        $badgeBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $trashPath = New-Object System.Windows.Shapes.Path
+        $trashPath.Data = [System.Windows.Media.Geometry]::Parse("M6,19c0,1.1 0.9,2 2,2h8c1.1,0 2,-0.9 2,-2V7H6v12z M19,4h-3.5l-1,-1h-5l-1,1H5v2h14V4z")
+        $trashPath.Fill = Brush("#EF4444")
+        $trashPath.Width = 18; $trashPath.Height = 18
+        $trashPath.Stretch = [System.Windows.Media.Stretch]::Uniform
+        $trashPath.HorizontalAlignment = "Center"
+        $trashPath.VerticalAlignment = "Center"
+        $badgeBorder.Child = $trashPath
+    } elseif ($operation -eq "Kur") {
+        $badgeBorder.Background = if ($global:isDark) { Brush("#0A2E20") } else { Brush("#DCFCE7") }
+        $badgeBorder.BorderBrush = Brush("#10B981")
+        $badgeBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $tIco = New-Object System.Windows.Controls.TextBlock; $tIco.Text = "🚀"; $tIco.FontSize = 18; $tIco.HorizontalAlignment = "Center"; $tIco.VerticalAlignment = "Center"
+        $badgeBorder.Child = $tIco
+    } else {
+        $badgeBorder.Background = if ($global:isDark) { Brush("#0C2640") } else { Brush("#E0F2FE") }
+        $badgeBorder.BorderBrush = Brush("#0284C7")
+        $badgeBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $tIco = New-Object System.Windows.Controls.TextBlock; $tIco.Text = "🔄"; $tIco.FontSize = 18; $tIco.HorizontalAlignment = "Center"; $tIco.VerticalAlignment = "Center"
+        $badgeBorder.Child = $tIco
+    }
+    [void]$hTopSp.Children.Add($badgeBorder)
+
     $hTitleT = New-Object System.Windows.Controls.TextBlock; $hTitleT.Text = $opTitle; $hTitleT.FontSize = 17; $hTitleT.FontWeight = "Bold"
-    $hTitleT.Foreground = Brush($opAccent)
-    [void]$hTopSp.Children.Add($hIcoT); [void]$hTopSp.Children.Add($hTitleT)
+    $hTitleT.Foreground = Brush($opAccent); $hTitleT.VerticalAlignment = "Center"
+    [void]$hTopSp.Children.Add($hTitleT)
     [void]$headSp.Children.Add($hTopSp)
 
     $hDescT = New-Object System.Windows.Controls.TextBlock
@@ -5617,7 +5650,72 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     return $script:confirmResult
 }
 
-# --- 4 AŞAMALI DERİN TEMİZLİK VE KALINTI SİLME SİHİRBAZI (IMAGES 2-5) ---
+
+function New-ModernBtn([string]$text, [string]$bgHex, [string]$fgHex = "#FFFFFF", [int]$radius = 8, [int]$fontSize = 12) {
+    $btn = New-Object System.Windows.Controls.Button
+    $btn.Content = $text
+    $btn.Foreground = Brush($fgHex)
+    $btn.FontSize = $fontSize
+    $btn.FontWeight = "Bold"
+    $btn.Cursor = "Hand"
+    $btn.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btn.Padding = New-Object System.Windows.Thickness(20, 8, 20, 8)
+
+    $templateXaml = @"
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button">
+    <Border Name="border" Background="$bgHex" CornerRadius="$radius" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+    <ControlTemplate.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="border" Property="Opacity" Value="0.88"/>
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+            <Setter TargetName="border" Property="Opacity" Value="0.75"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+            <Setter TargetName="border" Property="Opacity" Value="0.4"/>
+        </Trigger>
+    </ControlTemplate.Triggers>
+</ControlTemplate>
+"@
+    $btn.Template = [System.Windows.Markup.XamlReader]::Parse($templateXaml)
+    return $btn
+}
+
+function New-ModernCheck([string]$text, [bool]$isChecked = $true) {
+    $cb = New-Object System.Windows.Controls.CheckBox
+    $cb.Content = $text
+    $cb.IsChecked = $isChecked
+    $cb.Cursor = "Hand"
+    $cb.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+    $cb.FontSize = 11.5
+
+    $templateXaml = @"
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="CheckBox">
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+        <Border Name="box" Width="18" Height="18" CornerRadius="4" Background="#111827" BorderBrush="#0284C7" BorderThickness="1.5" VerticalAlignment="Center" Margin="0,0,10,0">
+            <Path Name="check" Data="M3,8 L7,12 L14,4" Stroke="#10B981" StrokeThickness="2.2" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ContentPresenter VerticalAlignment="Center"/>
+    </StackPanel>
+    <ControlTemplate.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+            <Setter TargetName="check" Property="Visibility" Value="Visible"/>
+            <Setter TargetName="box" Property="Background" Value="#0F172A"/>
+            <Setter TargetName="box" Property="BorderBrush" Value="#10B981"/>
+        </Trigger>
+        <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="box" Property="BorderBrush" Value="#38BDF8"/>
+        </Trigger>
+    </ControlTemplate.Triggers>
+</ControlTemplate>
+"@
+    $cb.Template = [System.Windows.Markup.XamlReader]::Parse($templateXaml)
+    return $cb
+}
+
+# --- 4 AŞAMALI DERİN TEMİZLİK VE KALINTI SİLME SİHİRBAZI ---
 function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", [string]$appSlug = "") {
     # Parametreleri cözümle
     $targetName = ""
@@ -5635,10 +5733,19 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         $targetId = if ($app.Id) { $app.Id } else { $appId }
         $targetSlug = if ($app.Slug) { $app.Slug } else { $appSlug }
         $targetDesc = if ($app.Desc) { $app.Desc } else { "" }
+        if ($app.IconSource) { $targetIconSource = $app.IconSource }
     } else {
         $targetName = if ($appName) { $appName } else { "Uygulama" }
         $targetId = $appId
         $targetSlug = $appSlug
+    }
+
+    # Logo cözümle (Karttaki ve onbellekteki orijinal logoyu al)
+    if (-not $targetIconSource) {
+        $targetDomain = if ($app -and $app.Domain) { $app.Domain } else { "" }
+        try {
+            $targetIconSource = Get-WpfIconSource -slug $targetSlug -altDomain $targetDomain -appName $targetName
+        } catch {}
     }
 
     # Arama anahtarları (tokens) oluştur
@@ -5663,7 +5770,6 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $appPublisher = if ($targetDesc) { $targetDesc } else { $targetName }
 
     try {
-        # Registry'den surum ve yayinci bilgisi sorgula
         $regPaths = @(
             "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
             "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
@@ -5702,9 +5808,9 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     # Kok Izgara
     $rootGrid = New-Object System.Windows.Controls.Grid
     $rootGrid.Margin = New-Object System.Windows.Thickness(22)
-    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto # Header
-    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star) # Step Body
-    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto # Footer Controls
+    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
+    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto
     [void]$rootGrid.RowDefinitions.Add($r0); [void]$rootGrid.RowDefinitions.Add($r1); [void]$rootGrid.RowDefinitions.Add($r2)
 
     # Ortak Baslik Alani
@@ -5729,7 +5835,6 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [System.Windows.Controls.Grid]::SetRow($hdrPanel, 0)
     [void]$rootGrid.Children.Add($hdrPanel)
 
-    # Bulunan veriler
     $foundFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
     $foundRegs  = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -5750,7 +5855,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [void]$rootGrid.Children.Add($step4)
 
     # =========================================================================
-    # 1. ADIM (RESİM 2): ONAY, UYGULAMA BİLGİ KARTI VE GERİ YÜKLEME SEÇENEĞİ
+    # 1. ADIM (RESİM 2 & 3): ONAY, UYGULAMA LOGOLU BİLGİ KARTI VE MODERN CHECKBOX
     # =========================================================================
     $s1Card = New-Object System.Windows.Controls.Border
     $s1Card.Background = if ($global:isDark) { Brush("#111827") } else { Brush("#FFFFFF") }
@@ -5765,32 +5870,26 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s1c1 = New-Object System.Windows.Controls.ColumnDefinition; $s1c1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     [void]$s1Grid.ColumnDefinitions.Add($s1c0); [void]$s1Grid.ColumnDefinitions.Add($s1c1)
 
-    # Logo / Simge
+    # Logo / Simge (Resim 3 Düzeltmesi: Gerçek Logo Gösterimi)
     $s1IconBorder = New-Object System.Windows.Controls.Border
-    $s1IconBorder.Width = 54; $s1IconBorder.Height = 54
+    $s1IconBorder.Width = 56; $s1IconBorder.Height = 56
     $s1IconBorder.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
-    $s1IconBorder.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $s1IconBorder.CornerRadius = New-Object System.Windows.CornerRadius(10)
     $s1IconBorder.HorizontalAlignment = "Left"; $s1IconBorder.VerticalAlignment = "Top"
 
-    $s1Ico = New-Object System.Windows.Controls.TextBlock
-    $s1Ico.Text = "📦"; $s1Ico.FontSize = 26; $s1Ico.HorizontalAlignment = "Center"; $s1Ico.VerticalAlignment = "Center"
-    $s1IconBorder.Child = $s1Ico
+    if ($targetIconSource) {
+        $s1Img = New-Object System.Windows.Controls.Image
+        $s1Img.Source = $targetIconSource
+        $s1Img.Width = 42; $s1Img.Height = 42
+        [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($s1Img, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+        $s1IconBorder.Child = $s1Img
+    } else {
+        $s1Ico = New-Object System.Windows.Controls.TextBlock
+        $s1Ico.Text = "📦"; $s1Ico.FontSize = 26; $s1Ico.HorizontalAlignment = "Center"; $s1Ico.VerticalAlignment = "Center"
+        $s1IconBorder.Child = $s1Ico
+    }
     [System.Windows.Controls.Grid]::SetColumn($s1IconBorder, 0)
     [void]$s1Grid.Children.Add($s1IconBorder)
-
-    # Logo dosyasını bulmaya çalış
-    if ($targetSlug) {
-        $foundLogo = (Get-ChildItem -Path "c:\projem\logolar" -Filter "*$targetSlug*" -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($foundLogo) {
-            try {
-                $bmp = New-Object System.Windows.Media.Imaging.BitmapImage
-                $bmp.BeginInit(); $bmp.UriSource = [Uri]$foundLogo.FullName; $bmp.CacheOption = [System.Windows.Media.Imaging.BitmapCacheOption]::OnLoad; $bmp.EndInit(); $bmp.Freeze()
-                $img = New-Object System.Windows.Controls.Image; $img.Source = $bmp; $img.Width = 38; $img.Height = 38
-                [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($img, [System.Windows.Media.BitmapScalingMode]::HighQuality)
-                $s1IconBorder.Child = $img
-            } catch {}
-        }
-    }
 
     # Bilgi Satırları
     $s1Details = New-Object System.Windows.Controls.StackPanel
@@ -5824,19 +5923,15 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s1Sp = New-Object System.Windows.Controls.StackPanel
     [void]$s1Sp.Children.Add($s1Card)
 
-    # Geri yükleme noktası onay kutusu
-    $chkRestore = New-Object System.Windows.Controls.CheckBox
-    $chkRestore.IsChecked = $true
-    $chkRestore.Content = "Programı kaldırmadan önce bir Sistem Geri Yükleme Noktası oluştur"
-    $chkRestore.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
-    $chkRestore.FontSize = 11.5
+    # Resim 2 Düzeltmesi: Modern Yuvarlatılmış Geri Yükleme Onay Kutusu
+    $chkRestore = New-ModernCheck "Programı kaldırmadan önce bir Sistem Geri Yükleme Noktası oluştur" $true
     $chkRestore.Margin = New-Object System.Windows.Thickness(6, 18, 0, 0)
     [void]$s1Sp.Children.Add($chkRestore)
 
     [void]$step1.Children.Add($s1Sp)
 
     # =========================================================================
-    # 2. ADIM (RESİM 3): BAŞLANGIÇ ANALİZİ VE TARAMA MODLARI
+    # 2. ADIM (RESİM 3 & 4): BAŞLANGIÇ ANALİZİ VE TARAMA MODLARI
     # =========================================================================
     $s2Sp = New-Object System.Windows.Controls.StackPanel
 
@@ -5877,7 +5972,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s2CardSteps.Child = $s2StepsSp
     [void]$s2Sp.Children.Add($s2CardSteps)
 
-    # Tarama Modları Paneli (GroupBox tarzı)
+    # Tarama Modları Paneli
     $s2ModesBorder = New-Object System.Windows.Controls.Border
     $s2ModesBorder.Background = if ($global:isDark) { Brush("#111827") } else { Brush("#FFFFFF") }
     $s2ModesBorder.BorderBrush = if ($global:isDark) { Brush("#1F2937") } else { Brush("#E2E8F0") }
@@ -5934,8 +6029,8 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     # =========================================================================
     $s3Grid = New-Object System.Windows.Controls.Grid
     $s3r0 = New-Object System.Windows.Controls.RowDefinition; $s3r0.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
-    $s3r1 = New-Object System.Windows.Controls.RowDefinition; $s3r1.Height = [System.Windows.GridLength]::Auto # Path Bar
-    $s3r2 = New-Object System.Windows.Controls.RowDefinition; $s3r2.Height = [System.Windows.GridLength]::Auto # Sub Action Buttons
+    $s3r1 = New-Object System.Windows.Controls.RowDefinition; $s3r1.Height = [System.Windows.GridLength]::Auto
+    $s3r2 = New-Object System.Windows.Controls.RowDefinition; $s3r2.Height = [System.Windows.GridLength]::Auto
     [void]$s3Grid.RowDefinitions.Add($s3r0); [void]$s3Grid.RowDefinitions.Add($s3r1); [void]$s3Grid.RowDefinitions.Add($s3r2)
 
     $regTreeBorder = New-Object System.Windows.Controls.Border
@@ -5967,7 +6062,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [System.Windows.Controls.Grid]::SetRow($regPathBox, 1)
     [void]$s3Grid.Children.Add($regPathBox)
 
-    # Alt Butonlar (Hepsini Seç / Seçimi Kaldır / Seçilenleri Sil) ve Özet
+    # Alt Butonlar (Yuvarlatılmış Modern Butonlar)
     $s3BarGrid = New-Object System.Windows.Controls.Grid
     $s3c0 = New-Object System.Windows.Controls.ColumnDefinition; $s3c0.Width = [System.Windows.GridLength]::Auto
     $s3c1 = New-Object System.Windows.Controls.ColumnDefinition; $s3c1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
@@ -5976,32 +6071,15 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s3BtnSp = New-Object System.Windows.Controls.StackPanel
     $s3BtnSp.Orientation = "Horizontal"
 
-    $btnRegSelectAll = New-Object System.Windows.Controls.Button
-    $btnRegSelectAll.Content = "Hepsini Seç"
-    $btnRegSelectAll.Padding = New-Object System.Windows.Thickness(10, 5, 10, 5)
-    $btnRegSelectAll.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnRegSelectAll.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnRegSelectAll.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnRegSelectAll.Cursor = "Hand"; $btnRegSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $btnRegSelectAll = New-ModernBtn "Hepsini Seç" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnRegSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s3BtnSp.Children.Add($btnRegSelectAll)
 
-    $btnRegDeselectAll = New-Object System.Windows.Controls.Button
-    $btnRegDeselectAll.Content = "Seçimi Kaldır"
-    $btnRegDeselectAll.Padding = New-Object System.Windows.Thickness(10, 5, 10, 5)
-    $btnRegDeselectAll.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnRegDeselectAll.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnRegDeselectAll.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnRegDeselectAll.Cursor = "Hand"; $btnRegDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $btnRegDeselectAll = New-ModernBtn "Seçimi Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnRegDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s3BtnSp.Children.Add($btnRegDeselectAll)
 
-    $btnRegDelete = New-Object System.Windows.Controls.Button
-    $btnRegDelete.Content = "🗑️  Seçilenleri Sil"
-    $btnRegDelete.Padding = New-Object System.Windows.Thickness(12, 5, 12, 5)
-    $btnRegDelete.Background = Brush("#DC2626")
-    $btnRegDelete.Foreground = Brush("#FFFFFF")
-    $btnRegDelete.FontWeight = "Bold"
-    $btnRegDelete.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnRegDelete.Cursor = "Hand"
+    $btnRegDelete = New-ModernBtn "🗑️ Seçilenleri Sil" "#DC2626" "#FFFFFF" 8 11
     [void]$s3BtnSp.Children.Add($btnRegDelete)
 
     [System.Windows.Controls.Grid]::SetColumn($s3BtnSp, 0)
@@ -6041,7 +6119,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [System.Windows.Controls.Grid]::SetRow($filesBorder, 0)
     [void]$s4Grid.Children.Add($filesBorder)
 
-    # Alt Butonlar ve Özet
+    # Alt Butonlar ve Özet (Yuvarlatılmış Modern Butonlar)
     $s4BarGrid = New-Object System.Windows.Controls.Grid
     $s4BarGrid.Margin = New-Object System.Windows.Thickness(0, 10, 0, 0)
     $s4c0 = New-Object System.Windows.Controls.ColumnDefinition; $s4c0.Width = [System.Windows.GridLength]::Auto
@@ -6051,39 +6129,22 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s4BtnSp = New-Object System.Windows.Controls.StackPanel
     $s4BtnSp.Orientation = "Horizontal"
 
-    $btnFileSelectAll = New-Object System.Windows.Controls.Button
-    $btnFileSelectAll.Content = "Hepsini Seç"
-    $btnFileSelectAll.Padding = New-Object System.Windows.Thickness(10, 5, 10, 5)
-    $btnFileSelectAll.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnFileSelectAll.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnFileSelectAll.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnFileSelectAll.Cursor = "Hand"; $btnFileSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $btnFileSelectAll = New-ModernBtn "Hepsini Seç" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnFileSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s4BtnSp.Children.Add($btnFileSelectAll)
 
-    $btnFileDeselectAll = New-Object System.Windows.Controls.Button
-    $btnFileDeselectAll.Content = "Seçimi Kaldır"
-    $btnFileDeselectAll.Padding = New-Object System.Windows.Thickness(10, 5, 10, 5)
-    $btnFileDeselectAll.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnFileDeselectAll.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnFileDeselectAll.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnFileDeselectAll.Cursor = "Hand"; $btnFileDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+    $btnFileDeselectAll = New-ModernBtn "Seçimi Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnFileDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s4BtnSp.Children.Add($btnFileDeselectAll)
 
-    $btnFileDelete = New-Object System.Windows.Controls.Button
-    $btnFileDelete.Content = "🗑️  Seçilenleri Sil"
-    $btnFileDelete.Padding = New-Object System.Windows.Thickness(12, 5, 12, 5)
-    $btnFileDelete.Background = Brush("#DC2626")
-    $btnFileDelete.Foreground = Brush("#FFFFFF")
-    $btnFileDelete.FontWeight = "Bold"
-    $btnFileDelete.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnFileDelete.Cursor = "Hand"
+    $btnFileDelete = New-ModernBtn "🗑️ Seçilenleri Sil" "#DC2626" "#FFFFFF" 8 11
     [void]$s4BtnSp.Children.Add($btnFileDelete)
 
     [System.Windows.Controls.Grid]::SetColumn($s4BtnSp, 0)
     [void]$s4BarGrid.Children.Add($s4BtnSp)
 
     $fileStatTxt = New-Object System.Windows.Controls.TextBlock
-    $fileStatTxt.Text = "Klasörler: 0 | Dosyalar: 0 | Toplam Boyut: 0 KB"
+    $fileStatTxt.Text = "Klasörler: 0 | Dosyalar: 0 | Toplam: 0 öge"
     $fileStatTxt.FontSize = 11; $fileStatTxt.Foreground = Brush("#F59E0B")
     $fileStatTxt.HorizontalAlignment = "Right"; $fileStatTxt.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($fileStatTxt, 1)
@@ -6100,7 +6161,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $step4.Visibility = [System.Windows.Visibility]::Collapsed
 
     # =========================================================================
-    # GENEL ALT GEZİNME PANELİ (FOOTER NAV)
+    # GENEL ALT GEZİNME PANELİ (FOOTER NAV - YUVARLATILMIŞ ŞIK BUTONLAR)
     # =========================================================================
     $footNav = New-Object System.Windows.Controls.Grid
     $footNav.Margin = New-Object System.Windows.Thickness(0, 16, 0, 0)
@@ -6109,36 +6170,23 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $fn2 = New-Object System.Windows.Controls.ColumnDefinition; $fn2.Width = [System.Windows.GridLength]::Auto
     [void]$footNav.ColumnDefinitions.Add($fn0); [void]$footNav.ColumnDefinitions.Add($fn1); [void]$footNav.ColumnDefinitions.Add($fn2)
 
-    # Sol durum bilgisi
     $navStatusTxt = New-Object System.Windows.Controls.TextBlock
     $navStatusTxt.Text = "Adım 1 / 4: Kaldırma Onayı"
     $navStatusTxt.FontSize = 11; $navStatusTxt.Foreground = Brush("#94A3B8"); $navStatusTxt.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($navStatusTxt, 0)
     [void]$footNav.Children.Add($navStatusTxt)
 
-    # Sağ butonlar
     $navBtnSp = New-Object System.Windows.Controls.StackPanel
     $navBtnSp.Orientation = "Horizontal"
 
-    $btnCancel = New-Object System.Windows.Controls.Button
-    $btnCancel.Content = "İptal"
-    $btnCancel.Padding = New-Object System.Windows.Thickness(16, 7, 16, 7)
-    $btnCancel.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
-    $btnCancel.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $btnCancel.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnCancel.Cursor = "Hand"
+    # İptal Butonu (Yuvarlak Köşeli)
+    $btnCancel = New-ModernBtn "İptal" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11.5
     $btnCancel.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnCancel.Add_Click({ $wizWin.Close() })
     [void]$navBtnSp.Children.Add($btnCancel)
 
-    $btnNext = New-Object System.Windows.Controls.Button
-    $btnNext.Content = "Devam"
-    $btnNext.Padding = New-Object System.Windows.Thickness(22, 7, 22, 7)
-    $btnNext.Background = Brush("#0284C7")
-    $btnNext.Foreground = Brush("#FFFFFF")
-    $btnNext.FontWeight = "Bold"
-    $btnNext.BorderThickness = New-Object System.Windows.Thickness(0)
-    $btnNext.Cursor = "Hand"
+    # İleri / Tara / Son Butonu (Yuvarlak Köşeli)
+    $btnNext = New-ModernBtn "Devam" "#0284C7" "#FFFFFF" 8 12
     [void]$navBtnSp.Children.Add($btnNext)
 
     [System.Windows.Controls.Grid]::SetColumn($navBtnSp, 2)
@@ -6251,7 +6299,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         }
     }
 
-    # Ağaç Görünümünü Doldur (Adım 3)
+    # Ağaç Görünümünü Doldur (Adım 3 - Güvenli ve Hatasız Doldurma)
     $populateTree = {
         $regTree.Items.Clear()
         $allRegCheckboxes.Clear()
@@ -6260,7 +6308,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         $rootNode.IsExpanded = $true
 
         $rootSp = New-Object System.Windows.Controls.StackPanel; $rootSp.Orientation = "Horizontal"
-        $rootIco = New-Object System.Windows.Controls.TextBlock; $rootIco.Text = "💻 "; $rootIco.FontSize = 13
+        $rootIco = New-Object System.Windows.Controls.TextBlock; $rootIco.Text = "[PC] "; $rootIco.FontSize = 11; $rootIco.Foreground = Brush("#38BDF8")
         $rootTxt = New-Object System.Windows.Controls.TextBlock; $rootTxt.Text = "Bilgisayarım"; $rootTxt.FontWeight = "Bold"; $rootTxt.FontSize = 11.5
         $rootTxt.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
         [void]$rootSp.Children.Add($rootIco); [void]$rootSp.Children.Add($rootTxt)
@@ -6269,15 +6317,20 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
 
         if ($foundRegs.Count -eq 0) {
             $emptyNode = New-Object System.Windows.Controls.TreeViewItem
-            $emptyNode.Header = "✓ Kalıntı kayıt anahtarı bulunamadı (Temiz)"
+            $emptyNode.Header = "Kalıntı kayıt anahtarı bulunamadı (Sistem Temiz)"
             $emptyNode.Foreground = Brush("#10B981")
             [void]$rootNode.Items.Add($emptyNode)
             $regStatTxt.Text = "Kayıt Anahtarları: 0 | Değerler: 0"
             return
         }
 
-        $hkcuNode = New-Object System.Windows.Controls.TreeViewItem; $hkcuNode.Header = "📁 HKEY_CURRENT_USER\Software"; $hkcuNode.IsExpanded = $true
-        $hklmNode = New-Object System.Windows.Controls.TreeViewItem; $hklmNode.Header = "📁 HKEY_LOCAL_MACHINE\Software"; $hklmNode.IsExpanded = $true
+        $hkcuNode = New-Object System.Windows.Controls.TreeViewItem
+        $hkcuNode.Header = "HKEY_CURRENT_USER\Software"
+        $hkcuNode.IsExpanded = $true
+
+        $hklmNode = New-Object System.Windows.Controls.TreeViewItem
+        $hklmNode.Header = "HKEY_LOCAL_MACHINE\Software"
+        $hklmNode.IsExpanded = $true
 
         $totalVals = 0
         foreach ($r in $foundRegs) {
@@ -6326,19 +6379,18 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
 
         if ($foundFiles.Count -eq 0) {
             $emptyTxt = New-Object System.Windows.Controls.TextBlock
-            $emptyTxt.Text = "✓ Sistemde geride kalan dosya veya klasör bulunamadı (Temiz)"
+            $emptyTxt.Text = "Sistemde geride kalan dosya veya klasör bulunamadı (Sistem Temiz)"
             $emptyTxt.Foreground = Brush("#10B981")
             $emptyTxt.FontWeight = "SemiBold"; $emptyTxt.FontSize = 12
             $emptyTxt.Margin = New-Object System.Windows.Thickness(12)
             [void]$filesListSp.Children.Add($emptyTxt)
-            $fileStatTxt.Text = "Klasörler: 0 | Dosyalar: 0 | Toplam Boyut: 0 KB"
+            $fileStatTxt.Text = "Klasörler: 0 | Dosyalar: 0 | Toplam: 0 öge"
             return
         }
 
         $foldersCount = 0
         $filesCount = 0
 
-        # Başlık sütunları
         $hGrid = New-Object System.Windows.Controls.Grid
         $hGrid.Margin = New-Object System.Windows.Thickness(4, 2, 4, 6)
         $hc0 = New-Object System.Windows.Controls.ColumnDefinition; $hc0.Width = New-Object System.Windows.GridLength(30)
@@ -6373,7 +6425,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             [System.Windows.Controls.Grid]::SetColumn($chk, 0); [void]$rowGrid.Children.Add($chk)
 
             $pathSp = New-Object System.Windows.Controls.StackPanel; $pathSp.Orientation = "Horizontal"
-            $icoT = New-Object System.Windows.Controls.TextBlock; $icoT.Text = "📁 "; $icoT.FontSize = 11; $icoT.Margin = New-Object System.Windows.Thickness(0, 0, 4, 0)
+            $icoT = New-Object System.Windows.Controls.TextBlock; $icoT.Text = "[D] "; $icoT.FontSize = 11; $icoT.Foreground = Brush("#38BDF8"); $icoT.Margin = New-Object System.Windows.Thickness(0, 0, 4, 0)
             $pT = New-Object System.Windows.Controls.TextBlock; $pT.Text = $f.Path; $pT.FontSize = 10.5; $pT.TextTrimming = "CharacterEllipsis"
             $pT.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }; $pT.ToolTip = $f.Path
             [void]$pathSp.Children.Add($icoT); [void]$pathSp.Children.Add($pT)
@@ -6456,7 +6508,6 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             $step1.Visibility = [System.Windows.Visibility]::Collapsed
             $step2.Visibility = [System.Windows.Visibility]::Visible
 
-            # Geri yükleme noktası istenmişse arkaplanda oluştur
             if ($chkRestore.IsChecked) {
                 try {
                     Start-Process -FilePath "powershell.exe" -ArgumentList "-WindowStyle Hidden -Command Checkpoint-Computer -Description 'SystemManagerPro - $targetName Kaldirilmadan Once' -RestorePointType APPLICATION_UNINSTALL" -WindowStyle Hidden
@@ -6464,20 +6515,33 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             }
         }
         elseif ($currentStep -eq 2) {
-            # Adım 2 -> Adım 3: Tarama Başlat ve Kayıt Defterini Göster
-            $mode = if ($rbSafe.IsChecked) { "Safe" } elseif ($rbMod.IsChecked) { "Moderate" } else { "Advanced" }
-            & $runDeepScan $mode
-            & $populateTree
+            # Adım 2 -> Adım 3: Tarama Başlat ve Kayıt Defterini Göster (Resim 4 Düzeltmesi)
+            try {
+                $btnNext.Content = "Taranıyor..."
+                $btnNext.IsEnabled = $false
+                [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([action]{}, [System.Windows.Threading.DispatcherPriority]::Render)
 
-            $currentStep = 3
-            $hdrTitle.Text = "Bulunan Gereksiz Kayıt Defteri Girdileri"
-            $hdrSub.Text = "Kaldırılan uygulamaya ait kayıt defteri anahtarları ve değerleri aşağıda listelenmiştir. Silmek istediklerinizi seçin."
-            $navStatusTxt.Text = "Adım 3 / 4: Kayıt Defteri Kalıntıları"
-            $btnNext.Content = "İleri"
-            $btnNext.Background = Brush("#0284C7")
+                $mode = if ($rbSafe.IsChecked) { "Safe" } elseif ($rbMod.IsChecked) { "Moderate" } else { "Advanced" }
+                & $runDeepScan $mode
+                & $populateTree
 
-            $step2.Visibility = [System.Windows.Visibility]::Collapsed
-            $step3.Visibility = [System.Windows.Visibility]::Visible
+                $currentStep = 3
+                $hdrTitle.Text = "Bulunan Gereksiz Kayıt Defteri Girdileri"
+                $hdrSub.Text = "Kaldırılan uygulamaya ait kayıt defteri anahtarları ve değerleri aşağıda listelenmiştir. Silmek istediklerinizi seçin."
+                $navStatusTxt.Text = "Adım 3 / 4: Kayıt Defteri Kalıntıları"
+                $btnNext.Content = "İleri"
+                $btnNext.Background = Brush("#0284C7")
+                $btnNext.IsEnabled = $true
+
+                $step2.Visibility = [System.Windows.Visibility]::Collapsed
+                $step3.Visibility = [System.Windows.Visibility]::Visible
+            } catch {
+                $btnNext.Content = "İleri"
+                $btnNext.IsEnabled = $true
+                $currentStep = 3
+                $step2.Visibility = [System.Windows.Visibility]::Collapsed
+                $step3.Visibility = [System.Windows.Visibility]::Visible
+            }
         }
         elseif ($currentStep -eq 3) {
             # Adım 3 -> Adım 4: Dosya Kalıntılarını Göster
