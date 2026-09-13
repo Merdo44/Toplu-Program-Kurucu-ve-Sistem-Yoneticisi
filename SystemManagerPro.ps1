@@ -5489,8 +5489,9 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     $mGrid = New-Object System.Windows.Controls.Grid
     $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto # Header
     $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star) # List
-    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto # Buttons
-    [void]$mGrid.RowDefinitions.Add($r0); [void]$mGrid.RowDefinitions.Add($r1); [void]$mGrid.RowDefinitions.Add($r2)
+    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto # Deep Clean Card
+    $r3 = New-Object System.Windows.Controls.RowDefinition; $r3.Height = [System.Windows.GridLength]::Auto # Buttons
+    [void]$mGrid.RowDefinitions.Add($r0); [void]$mGrid.RowDefinitions.Add($r1); [void]$mGrid.RowDefinitions.Add($r2); [void]$mGrid.RowDefinitions.Add($r3)
 
     # 1. HEADER
     $headSp = New-Object System.Windows.Controls.StackPanel
@@ -5644,15 +5645,25 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     [System.Windows.Controls.Grid]::SetRow($listBorder, 1)
     [void]$mGrid.Children.Add($listBorder)
 
-    # İsteğe Bağlı Derin Temizlik Seçeneği (Kullanıcı İsteği: Otomatik seçilmesin, sorulsun)
+    # İsteğe Bağlı Derin Temizlik Seçeneği (Kullanıcı İsteği: Belirgin ve Özel Kart Alanı)
     $chkBatchDeep = $null
     if ($operation -eq "Kaldir") {
         $anyDeepSelectedInQueue = @($queueToProcess | Where-Object { $_.Tag -and $_.Tag.App -and $_.Tag.App.DoDeepClean }).Count -gt 0
-        $chkBatchDeep = New-ModernCheck "Kaldırma işlemi sonrasında Derin Temizlik yapılsın (Kayıt defteri ve dosya kalıntılarını tara)" $anyDeepSelectedInQueue
-        $chkBatchDeep.Margin = New-Object System.Windows.Thickness(4, 10, 0, 0)
-        [System.Windows.Controls.Grid]::SetRow($chkBatchDeep, 1)
-        $chkBatchDeep.VerticalAlignment = "Bottom"
-        [void]$mGrid.Children.Add($chkBatchDeep)
+        
+        $deepCard = New-Object System.Windows.Controls.Border
+        $deepCard.CornerRadius = New-Object System.Windows.CornerRadius(8)
+        $deepCard.Background = if ($global:isDark) { Brush("#1A102A") } else { Brush("#F5F3FF") }
+        $deepCard.BorderBrush = if ($global:isDark) { Brush("#6D28D9") } else { Brush("#DDD6FE") }
+        $deepCard.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $deepCard.Padding = New-Object System.Windows.Thickness(10, 8, 10, 8)
+        $deepCard.Margin = New-Object System.Windows.Thickness(0, 10, 0, 0)
+
+        $chkBatchDeep = New-ModernCheck "Kaldırma işlemi sonrasında Derin Temizlik yapılsın (Kayıt defteri ve dosya kalıntılarını tara)" ($anyDeepSelectedInQueue -or $global:batchDoDeepClean)
+        $chkBatchDeep.Margin = New-Object System.Windows.Thickness(0)
+        $deepCard.Child = $chkBatchDeep
+
+        [System.Windows.Controls.Grid]::SetRow($deepCard, 2)
+        [void]$mGrid.Children.Add($deepCard)
     }
 
     # 3. ACTION BUTTONS (Evet / Hayır)
@@ -5713,7 +5724,7 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     [System.Windows.Controls.Grid]::SetColumn($btnYes, 1)
     [void]$btnGrid.Children.Add($btnYes)
 
-    [System.Windows.Controls.Grid]::SetRow($btnGrid, 2)
+    [System.Windows.Controls.Grid]::SetRow($btnGrid, 3)
     [void]$mGrid.Children.Add($btnGrid)
 
     $mBorder.Child = $mGrid
@@ -5796,6 +5807,9 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $targetSlug = ""
     $targetDesc = ""
     $targetIconSource = $null
+
+    if ($app.Tag -and $app.Tag.App) { $app = $app.Tag.App }
+    elseif ($app.App) { $app = $app.App }
 
     if ($app -is [string]) {
         $targetName = $app
@@ -6187,11 +6201,11 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s3BtnSp = New-Object System.Windows.Controls.StackPanel
     $s3BtnSp.Orientation = "Horizontal"
 
-    $btnRegSelectAll = New-ModernBtn "Hepsini Seç" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnRegSelectAll = New-ModernBtn "Hepsini Seç" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
     $btnRegSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s3BtnSp.Children.Add($btnRegSelectAll)
 
-    $btnRegDeselectAll = New-ModernBtn "Seçimi Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnRegDeselectAll = New-ModernBtn "Seçimi Kaldır" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
     $btnRegDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s3BtnSp.Children.Add($btnRegDeselectAll)
 
@@ -6245,11 +6259,11 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $s4BtnSp = New-Object System.Windows.Controls.StackPanel
     $s4BtnSp.Orientation = "Horizontal"
 
-    $btnFileSelectAll = New-ModernBtn "Hepsini Seç" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnFileSelectAll = New-ModernBtn "Hepsini Seç" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
     $btnFileSelectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s4BtnSp.Children.Add($btnFileSelectAll)
 
-    $btnFileDeselectAll = New-ModernBtn "Seçimi Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
+    $btnFileDeselectAll = New-ModernBtn "Seçimi Kaldır" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11
     $btnFileDeselectAll.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
     [void]$s4BtnSp.Children.Add($btnFileDeselectAll)
 
@@ -6296,7 +6310,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $navBtnSp.Orientation = "Horizontal"
 
     # Standart Kaldır Butonu (Derin temizliği atla)
-    $btnSkipDeep = New-ModernBtn "Standart Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#94A3B8" } else { "#475569" }) 8 11.5
+    $btnSkipDeep = New-ModernBtn "Standart Kaldır" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#94A3B8" } else { "#475569" }) 8 11.5
     $btnSkipDeep.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnSkipDeep.ToolTip = "Kalıntı taraması yapmadan yalnızca standart kaldırma işlemini tamamlar."
     $btnSkipDeep.Add_Click({
@@ -6306,7 +6320,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [void]$navBtnSp.Children.Add($btnSkipDeep)
 
     # İptal Butonu (Yuvarlak Köşeli)
-    $btnCancel = New-ModernBtn "İptal" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11.5
+    $btnCancel = New-ModernBtn "İptal" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11.5
     $btnCancel.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
     $btnCancel.Add_Click({ $wizWin.Close() })
     [void]$navBtnSp.Children.Add($btnCancel)
@@ -6323,7 +6337,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     # =========================================================================
     # SİHİRBAZ KONTROL VE GEÇİŞ MEKANİZMASI
     # =========================================================================
-    $currentStep = 1
+    $wizState = [PSCustomObject]@{ Step = 1 }
     $allRegCheckboxes = [System.Collections.Generic.List[System.Windows.Controls.CheckBox]]::new()
     $allFileCheckboxes = [System.Collections.Generic.List[System.Windows.Controls.CheckBox]]::new()
 
@@ -6661,9 +6675,9 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
 
     # Adım İlerleme Mantığı (Next / Tara / Devam / Son)
     $btnNext.Add_Click({
-        if ($currentStep -eq 1) {
+        if ($wizState.Step -eq 1) {
             # Adım 1 -> Adım 2: Başlangıç Analizi & Kaldırma
-            $currentStep = 2
+            $wizState.Step = 2
             $hdrTitle.Text = "Başlangıç Analizi ve Kaldırma İşlemleri Yapılıyor"
             $hdrSub.Text = "Sistem analizi ve kaldırma adımları sırayla gerçekleştiriliyor:"
             $navStatusTxt.Text = "Adım 2 / 4: Analiz ve Tarama Modu"
@@ -6680,7 +6694,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
                 } catch {}
             }
         }
-        elseif ($currentStep -eq 2) {
+        elseif ($wizState.Step -eq 2) {
             # Adım 2 -> Adım 3: Tarama Başlat ve Kayıt Defterini Göster (Resim 4 Düzeltmesi)
             try {
                 $btnNext.Content = "Taranıyor..."
@@ -6691,7 +6705,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
                 & $runDeepScan $mode
                 & $populateTree
 
-                $currentStep = 3
+                $wizState.Step = 3
                 $hdrTitle.Text = "Bulunan Gereksiz Kayıt Defteri Girdileri"
                 $hdrSub.Text = "Kaldırılan uygulamaya ait kayıt defteri anahtarları ve değerleri aşağıda listelenmiştir. Silmek istediklerinizi seçin."
                 $navStatusTxt.Text = "Adım 3 / 4: Kayıt Defteri Kalıntıları"
@@ -6704,16 +6718,16 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             } catch {
                 $btnNext.Content = "İleri"
                 $btnNext.IsEnabled = $true
-                $currentStep = 3
+                $wizState.Step = 3
                 $step2.Visibility = [System.Windows.Visibility]::Collapsed
                 $step3.Visibility = [System.Windows.Visibility]::Visible
             }
         }
-        elseif ($currentStep -eq 3) {
+        elseif ($wizState.Step -eq 3) {
             # Adım 3 -> Adım 4: Dosya Kalıntılarını Göster
             & $populateFiles
 
-            $currentStep = 4
+            $wizState.Step = 4
             $hdrTitle.Text = "Bulunan Gereksiz Dosya ve Klasörler"
             $hdrSub.Text = "Kaldırılan uygulamaya ait sistemde kalan dosya ve klasörler aşağıda listelenmiştir. Silmek istediklerinizi seçin."
             $navStatusTxt.Text = "Adım 4 / 4: Dosya ve Klasör Kalıntıları"
@@ -6723,7 +6737,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             $step3.Visibility = [System.Windows.Visibility]::Collapsed
             $step4.Visibility = [System.Windows.Visibility]::Visible
         }
-        elseif ($currentStep -eq 4) {
+        elseif ($wizState.Step -eq 4) {
             # Adım 4 -> Son: Sihirbazı Kapat
             $wizWin.Close()
             Show-ModernAlert "Derin Temizlik Tamamlandı" "'$targetName' uygulamasına ait tüm kalıntılar başarıyla temizlendi." "OK"
@@ -7162,7 +7176,10 @@ function Invoke-BatchOperation([string]$operation) {
                         Show-DeepCleanWizard $app
                         $exitCode = 0
                         $fullLog = "Uygulama ve tüm kalıntıları derin temizlik ile başarıyla kaldırıldı."
-                    } catch {}
+                    } catch {
+                        Write-Host "Derin Temizlik Sihirbazı Hatası: $_"
+                        $fullLog = "Derin temizlik sihirbazında hata oluştu: $($_.Exception.Message)"
+                    }
                 } else {
                     Set-Status "$($app.Name) standart olarak kaldırıldı." "SUCCESS"
                 }
