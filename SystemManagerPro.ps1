@@ -347,20 +347,22 @@ function Get-WpfIconSource([string]$slug, [string]$altDomain, [string]$directUrl
 # KULLANICI AYARLARI VE KAYNAK TERCİHİ MOTORU
 # ---------------------------------------------------------
 $global:settingsFile = "c:\projem\user_settings.json"
-$global:preferredInstallSource = "Auto" # "Auto", "Normal", "Store"
+$global:preferredInstallSource = "Ask" # "Ask", "Normal", "Store", "Auto"
+$global:preferredArch = "Auto" # "Auto", "x64", "x86"
 
 function Load-UserSettings {
     if (Test-Path $global:settingsFile) {
         try {
             $json = Get-Content $global:settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($json.PreferredSource) {
-                if ($json.PreferredSource -eq "Ask") {
-                    $global:preferredInstallSource = "Auto"
-                } else {
-                    $global:preferredInstallSource = $json.PreferredSource
-                }
+                $global:preferredInstallSource = $json.PreferredSource
             } else {
-                $global:preferredInstallSource = "Auto"
+                $global:preferredInstallSource = "Ask"
+            }
+            if ($json.PreferredArch) {
+                $global:preferredArch = $json.PreferredArch
+            } else {
+                $global:preferredArch = "Auto"
             }
         } catch {}
     }
@@ -368,7 +370,10 @@ function Load-UserSettings {
 
 function Save-UserSettings {
     try {
-        @{ PreferredSource = $global:preferredInstallSource } | ConvertTo-Json | Set-Content $global:settingsFile -Encoding UTF8
+        @{
+            PreferredSource = $global:preferredInstallSource
+            PreferredArch   = $global:preferredArch
+        } | ConvertTo-Json | Set-Content $global:settingsFile -Encoding UTF8
     } catch {}
 }
 
@@ -2726,7 +2731,8 @@ $xamlRaw = @"
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Name="btnSourcePrefToggle" Style="{StaticResource ModernHeaderBtn}" Content="📦 Kaynak: Her Zaman Sor" Margin="0,0,8,0" Cursor="Hand" ToolTip="Çift kaynaklı (Web / Store) uygulamalar için tercih edilen indirme modunu ayarlar veya değiştirir."/>
+                    <Button Name="btnSourcePrefToggle" Style="{StaticResource ModernHeaderBtn}" Content="📦 Kaynak: Her Zaman Sor" Margin="0,0,8,0" Cursor="Hand" ToolTip="Kurulum kaynağı tercihi: Her Zaman Sor / Normal (Web) / Microsoft Store / Otomatik."/>
+                    <Button Name="btnArchPrefToggle" Style="{StaticResource ModernHeaderBtn}" Content="⚙️ Mimari: Otomatik (64-Bit)" Margin="0,0,8,0" Cursor="Hand" ToolTip="İndirilecek paket mimarisi tercihi: Otomatik / 64-Bit / 32-Bit."/>
                     <Button Name="btnSelectUpdates" Style="{StaticResource ModernHeaderBtn}" Content="⚡ Güncelle" Margin="0,0,8,0"/>
                     <Button Name="btnTheme" Style="{StaticResource ModernHeaderBtn}" Content="☼ Açık Tema" Width="106"/>
                 </StackPanel>
@@ -2856,22 +2862,40 @@ $queueStackPanel = $window.FindName("queueStackPanel")
 $lblQueueHeader = $window.FindName("lblQueueHeader")
 $global:btnPrefSourcePill = $window.FindName("btnPrefSourcePill")
 $global:btnSourcePrefToggle = $window.FindName("btnSourcePrefToggle")
+$global:btnArchPrefToggle = $window.FindName("btnArchPrefToggle")
 
 function Update-PrefSourceButton {
     $btnList = @($global:btnPrefSourcePill, $global:btnSourcePrefToggle)
-    $archLabel = if ([Environment]::Is64BitOperatingSystem) { "64-Bit" } else { "32-Bit" }
     foreach ($btn in $btnList) {
         if (-not $btn) { continue }
-        if ($global:preferredInstallSource -eq "Normal") {
-            $btn.Content = "Kaynak: Normal (Web)"
+        if ($global:preferredInstallSource -eq "Ask") {
+            $btn.Content = "📦 Kaynak: Her Zaman Sor"
+            $btn.Foreground = Brush("#F59E0B")
+        } elseif ($global:preferredInstallSource -eq "Normal") {
+            $btn.Content = "🌐 Kaynak: Normal (Web)"
             $btn.Foreground = Brush("#38BDF8")
         } elseif ($global:preferredInstallSource -eq "Store") {
-            $btn.Content = "Kaynak: Microsoft Store"
+            $btn.Content = "🛍️ Kaynak: Microsoft Store"
             $btn.Foreground = Brush("#C084FC")
         } else {
-            $btn.Content = "Kaynak: Otomatik ($archLabel)"
+            $btn.Content = "⚡ Kaynak: Otomatik"
             $btn.Foreground = Brush("#10B981")
         }
+    }
+}
+
+function Update-PrefArchButton {
+    if (-not $global:btnArchPrefToggle) { return }
+    $sysArch = if ([Environment]::Is64BitOperatingSystem) { "64-Bit" } else { "32-Bit" }
+    if ($global:preferredArch -eq "x64") {
+        $global:btnArchPrefToggle.Content = "⚙️ Mimari: 64-Bit"
+        $global:btnArchPrefToggle.Foreground = Brush("#38BDF8")
+    } elseif ($global:preferredArch -eq "x86") {
+        $global:btnArchPrefToggle.Content = "⚙️ Mimari: 32-Bit"
+        $global:btnArchPrefToggle.Foreground = Brush("#F59E0B")
+    } else {
+        $global:btnArchPrefToggle.Content = "⚙️ Mimari: Otomatik ($sysArch)"
+        $global:btnArchPrefToggle.Foreground = Brush("#10B981")
     }
 }
 
@@ -2913,19 +2937,18 @@ function global:Update-CardSourceBadge($card, [string]$source) {
 }
 
 $CycleSourcePrefHandler = {
-    if ($global:preferredInstallSource -eq "Auto" -or $global:preferredInstallSource -eq "Ask") {
+    if ($global:preferredInstallSource -eq "Ask") {
         $global:preferredInstallSource = "Normal"
     } elseif ($global:preferredInstallSource -eq "Normal") {
         $global:preferredInstallSource = "Store"
-    } else {
+    } elseif ($global:preferredInstallSource -eq "Store") {
         $global:preferredInstallSource = "Auto"
+    } else {
+        $global:preferredInstallSource = "Ask"
     }
     Save-UserSettings
     Update-PrefSourceButton
 
-    # Sag ustteki kaynak tercihi degistiginde tum cift kaynakli uygulamalar:
-    # "Store" secildiyse -> hepsi Store rozetine guncellenir
-    # "Normal" veya "Her Zaman Sor" secildiyse -> hepsi standart Normal rozetine guncellenir (ve Her Zaman Sor aciksa kart secildiginde pencere sorar)
     $targetPref = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
     if ($global:allCards) {
         foreach ($c in $global:allCards) {
@@ -2942,13 +2965,40 @@ $CycleSourcePrefHandler = {
     Render-QueuePanel
 }
 
+$CycleArchPrefHandler = {
+    if ($global:preferredArch -eq "Auto") {
+        $global:preferredArch = "x64"
+    } elseif ($global:preferredArch -eq "x64") {
+        $global:preferredArch = "x86"
+    } else {
+        $global:preferredArch = "Auto"
+    }
+    Save-UserSettings
+    Update-PrefArchButton
+
+    # Kuyruktaki kurulu olmayan kartların mimari etiketini güncelle
+    if ($global:allCards) {
+        $targetArch = if ($global:preferredArch -eq "x64") { "x64" } elseif ($global:preferredArch -eq "x86") { "x86" } else { if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" } }
+        foreach ($c in $global:allCards) {
+            if ($c.Tag -and $c.Tag.App -and -not $c.Tag.IsInstalled) {
+                $c.Tag.App.SelectedArch = $targetArch
+            }
+        }
+    }
+    Render-QueuePanel
+}
+
 if ($global:btnSourcePrefToggle) {
     $global:btnSourcePrefToggle.Add_Click($CycleSourcePrefHandler)
 }
 if ($global:btnPrefSourcePill) {
     $global:btnPrefSourcePill.Add_Click($CycleSourcePrefHandler)
 }
+if ($global:btnArchPrefToggle) {
+    $global:btnArchPrefToggle.Add_Click($CycleArchPrefHandler)
+}
 Update-PrefSourceButton
+Update-PrefArchButton
 
 $txtStatus = $window.FindName("txtStatus")
 $txtSearch = $window.FindName("txtSearch")
@@ -4325,15 +4375,29 @@ function Toggle-CardSelection($card) {
 
         # YUKLU OLANLARDA: Kaynak ve sürüm diyalogu gösterilmez, değiştirilemez!
         if (-not $state.IsInstalled) {
-            # Kullanıcı İsteği: 64-bit / 32-bit mimari ve kaynak seçimi tamamen otomatik (OS 64-bit ise x64, değilse x86)
-            if (-not $app.SelectedArch) {
-                $app.SelectedArch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
-            }
+            # Mimari Tercihi (Otomatik / 64-Bit / 32-Bit)
+            $targetArch = if ($global:preferredArch -eq "x64") { "x64" } elseif ($global:preferredArch -eq "x86") { "x86" } else { if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" } }
+            $app.SelectedArch = $targetArch
 
             $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
-            if ($isPureStore -or $global:preferredInstallSource -eq "Store") {
+            $isDual = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl -or ($app.Id -and $app.Id -ne $app.StoreId)))
+
+            if ($isPureStore) {
                 $app.SelectedSource = "Store"
                 Update-CardSourceBadge $card "Store"
+            } elseif ($isDual) {
+                if ($global:preferredInstallSource -eq "Ask") {
+                    $chosen = Show-SourceSelectDialog $app $state.IconSource
+                    if (-not $chosen) { return }
+                    $app.SelectedSource = $chosen
+                    Update-CardSourceBadge $card $chosen
+                } elseif ($global:preferredInstallSource -eq "Store") {
+                    $app.SelectedSource = "Store"
+                    Update-CardSourceBadge $card "Store"
+                } else {
+                    $app.SelectedSource = "Normal"
+                    Update-CardSourceBadge $card "Normal"
+                }
             } else {
                 $app.SelectedSource = "Normal"
                 Update-CardSourceBadge $card "Normal"
@@ -5799,6 +5863,67 @@ function New-ModernCheck([string]$text, [bool]$isChecked = $true) {
     return $cb
 }
 
+# Modern Frameless Onay İletişim Kutusu (Silme İşlemleri İçin Evet/Hayır)
+function Show-WizConfirmPrompt($ownerWin, [string]$title, [string]$msg) {
+    $script:wizPromptResult = $false
+
+    $dlg = New-Object System.Windows.Window
+    $dlg.Title = $title
+    $dlg.Width = 430
+    $dlg.Height = 185
+    $dlg.WindowStartupLocation = "CenterScreen"
+    $dlg.ResizeMode = "NoResize"
+    $dlg.WindowStyle = "None"
+    $dlg.AllowsTransparency = $true
+    $dlg.Background = [System.Windows.Media.Brushes]::Transparent
+    $dlg.ShowInTaskbar = $false
+    try { if ($ownerWin -and $ownerWin.IsVisible) { $dlg.Owner = $ownerWin } } catch {}
+
+    $border = New-Object System.Windows.Controls.Border
+    $border.CornerRadius = New-Object System.Windows.CornerRadius(12)
+    $border.Background = if ($global:isDark) { Brush("#0F172A") } else { Brush("#FFFFFF") }
+    $border.BorderBrush = Brush("#EF4444")
+    $border.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $border.Padding = New-Object System.Windows.Thickness(20)
+
+    $sp = New-Object System.Windows.Controls.StackPanel
+
+    $hSp = New-Object System.Windows.Controls.StackPanel
+    $hSp.Orientation = "Horizontal"
+    $hIco = New-Object System.Windows.Controls.TextBlock; $hIco.Text = "🗑️ "; $hIco.FontSize = 16
+    $hTxt = New-Object System.Windows.Controls.TextBlock; $hTxt.Text = $title; $hTxt.FontSize = 14.5; $hTxt.FontWeight = "Bold"; $hTxt.Foreground = Brush("#EF4444")
+    [void]$hSp.Children.Add($hIco); [void]$hSp.Children.Add($hTxt)
+    [void]$sp.Children.Add($hSp)
+
+    $mTxt = New-Object System.Windows.Controls.TextBlock
+    $mTxt.Text = $msg
+    $mTxt.FontSize = 11.5
+    $mTxt.TextWrapping = "Wrap"
+    $mTxt.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+    $mTxt.Margin = New-Object System.Windows.Thickness(0, 10, 0, 18)
+    [void]$sp.Children.Add($mTxt)
+
+    $btnSp = New-Object System.Windows.Controls.StackPanel
+    $btnSp.Orientation = "Horizontal"
+    $btnSp.HorizontalAlignment = "Right"
+
+    $btnNo = New-ModernBtn "✕ Hayır" $(if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) $(if ($global:isDark) { "#94A3B8" } else { "#475569" }) 8 11.5
+    $btnNo.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+    $btnNo.Add_Click({ $script:wizPromptResult = $false; $dlg.Close() })
+    [void]$btnSp.Children.Add($btnNo)
+
+    $btnYes = New-ModernBtn "🗑️ Evet, Sil" "#DC2626" "#FFFFFF" 8 11.5
+    $btnYes.Add_Click({ $script:wizPromptResult = $true; $dlg.Close() })
+    [void]$btnSp.Children.Add($btnYes)
+
+    [void]$sp.Children.Add($btnSp)
+    $border.Child = $sp
+    $dlg.Content = $border
+    [void]$dlg.ShowDialog()
+
+    return $script:wizPromptResult
+}
+
 # --- 4 AŞAMALI DERİN TEMİZLİK VE KALINTI SİLME SİHİRBAZI ---
 function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", [string]$appSlug = "") {
     # Parametreleri cözümle
@@ -6403,7 +6528,8 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
                 $env:ProgramFiles,
                 ${env:ProgramFiles(x86)},
                 (Join-Path $env:USERPROFILE ".config"),
-                (Join-Path $env:USERPROFILE "AppData\LocalLow")
+                (Join-Path $env:USERPROFILE "AppData\LocalLow"),
+                (Join-Path $env:SystemRoot "Prefetch")
             )
         }
         $scanDirs = $scanDirs | Where-Object { $_ -and (Test-Path $_) }
@@ -6455,67 +6581,141 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             } catch {}
         }
 
-        # 2. Kayıt Defteri (Registry) Taraması (Yazılım Anahtarları, Uninstall Listeleri ve App Paths)
-        $regTargetList = @(
-            @{ Root = "HKCU"; Path = "HKCU:\Software"; FilterSys = $true },
-            @{ Root = "HKLM"; Path = "HKLM:\Software"; FilterSys = $true },
-            @{ Root = "HKCU"; Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false },
-            @{ Root = "HKLM"; Path = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false },
-            @{ Root = "HKCU"; Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths"; FilterSys = $false },
-            @{ Root = "HKLM"; Path = "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths"; FilterSys = $false }
+        # 2. Gelişmiş Kayıt Defteri (Registry) Taraması (Anahtarlar + UFH/SHC, MRU, Prefetch, AppCompat ve Değerler)
+        $scannedKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+        # A) Doğrudan Yazılım Anahtarları (HKCU/HKLM Software)
+        $softRoots = @(
+            @{ Root = "HKCU"; Path = "HKCU:\Software" },
+            @{ Root = "HKLM"; Path = "HKLM:\Software" },
+            @{ Root = "HKLM"; Path = "HKLM:\Software\WOW6432Node" }
         )
-        if ($scanMode -eq "Advanced" -or $scanMode -eq "Moderate") {
-            $regTargetList += @(
-                @{ Root = "HKLM"; Path = "HKLM:\Software\WOW6432Node"; FilterSys = $true },
-                @{ Root = "HKLM"; Path = "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false }
-            )
+        foreach ($sr in $softRoots) {
+            if (-not (Test-Path $sr.Path)) { continue }
+            try {
+                $subList = Get-ChildItem -Path $sr.Path -ErrorAction SilentlyContinue
+                foreach ($sk in $subList) {
+                    $skName = $sk.PSChildName
+                    $skLow = $skName.ToLowerInvariant()
+                    if ($skLow -in @("microsoft", "classes", "policies", "registeredapplications", "windows")) { continue }
+
+                    $mKey = $false
+                    foreach ($t in $cleanTokens) {
+                        if ($skLow -like "*$t*") { $mKey = $true; break }
+                    }
+                    if ($mKey -and -not $scannedKeys.Contains($sk.Name)) {
+                        [void]$scannedKeys.Add($sk.Name)
+                        $foundRegs.Add([PSCustomObject]@{
+                            Type      = "Key"
+                            Root      = $sr.Root
+                            KeyPath   = $sk.PSPath
+                            ValueName = $skName
+                            ValueData = ""
+                            Path      = $sk.Name
+                            IsChecked = $true
+                        })
+                    }
+                }
+            } catch {}
         }
 
-        foreach ($rt in $regTargetList) {
-            if (-not (Test-Path $rt.Path)) { continue }
-            try {
-                $regKeys = Get-ChildItem -Path $rt.Path -ErrorAction SilentlyContinue
-                foreach ($rk in $regKeys) {
-                    $kName = [System.IO.Path]::GetFileName($rk.Name)
-                    $kNameLow = $kName.ToLowerInvariant()
-                    if ($rt.FilterSys -and $kNameLow -in @("microsoft", "classes", "policies", "registeredapplications", "windows")) { continue }
+        # B) Revo Tarzı Özel Kabuk, UFH/SHC, Kısayol MRU, AppCompat, MUI ve Değer Taraması
+        $deepLocations = @(
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\UFH\SHC" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store" },
+            @{ Root = "HKLM"; Path = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths" },
+            @{ Root = "HKLM"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\AppSwitched" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FeatureUsage\ShowJumpView" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" },
+            @{ Root = "HKLM"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" },
+            @{ Root = "HKCU"; Path = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" },
+            @{ Root = "HKLM"; Path = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" },
+            @{ Root = "HKLM"; Path = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" }
+        )
 
-                    $matched = $false
-                    foreach ($token in $cleanTokens) {
-                        if ($kNameLow -like "*$token*") { $matched = $true; break }
+        foreach ($dl in $deepLocations) {
+            if (-not (Test-Path $dl.Path)) { continue }
+
+            # 1. Anahtarın altındaki değerleri (Value) tara
+            try {
+                $p = Get-ItemProperty -LiteralPath $dl.Path -ErrorAction SilentlyContinue
+                if ($p) {
+                    $pProps = $p.PSObject.Properties | Where-Object { $_.Name -notin @('PSPath','PSParentPath','PSChildName','PSDrive','PSProvider') }
+                    foreach ($prop in $pProps) {
+                        $vName = $prop.Name
+                        $vData = ($prop.Value | Out-String).Trim()
+                        $vNameLow = $vName.ToLowerInvariant()
+                        $vDataLow = $vData.ToLowerInvariant()
+
+                        $mVal = $false
+                        foreach ($t in $cleanTokens) {
+                            if ($vNameLow -like "*$t*" -or $vDataLow -like "*$t*") {
+                                $mVal = $true; break
+                            }
+                        }
+                        if ($mVal) {
+                            $uniqueId = "$($dl.Path)|$vName"
+                            if (-not $scannedKeys.Contains($uniqueId)) {
+                                [void]$scannedKeys.Add($uniqueId)
+                                $foundRegs.Add([PSCustomObject]@{
+                                    Type      = "Value"
+                                    Root      = $dl.Root
+                                    KeyPath   = $dl.Path
+                                    ValueName = $vName
+                                    ValueData = $vData
+                                    Path      = "$($dl.Path)\$vName"
+                                    IsChecked = $true
+                                })
+                            }
+                        }
                     }
-                    # Eger anahtar adi GUID/ID ise DisplayName kontrol et
-                    if (-not $matched) {
+                }
+            } catch {}
+
+            # 2. Alt anahtarları (SubKeys) tara (Örn: App Paths\ventoy.exe veya Uninstall\Ventoy)
+            try {
+                $subKeys = Get-ChildItem -Path $dl.Path -ErrorAction SilentlyContinue
+                foreach ($sk in $subKeys) {
+                    $skName = $sk.PSChildName
+                    $skLow = $skName.ToLowerInvariant()
+
+                    $mSub = $false
+                    foreach ($t in $cleanTokens) {
+                        if ($skLow -like "*$t*") { $mSub = $true; break }
+                    }
+                    if (-not $mSub) {
                         try {
-                            $dVal = (Get-ItemProperty -LiteralPath $rk.PSPath -Name "DisplayName" -ErrorAction SilentlyContinue).DisplayName
-                            if ($dVal) {
-                                foreach ($token in $cleanTokens) {
-                                    if ($dVal.ToLowerInvariant() -like "*$token*") { $matched = $true; break }
+                            $dName = (Get-ItemProperty -LiteralPath $sk.PSPath -Name "DisplayName" -ErrorAction SilentlyContinue).DisplayName
+                            if ($dName) {
+                                foreach ($t in $cleanTokens) {
+                                    if ($dName.ToLowerInvariant() -like "*$t*") { $mSub = $true; break }
                                 }
                             }
                         } catch {}
                     }
 
-                    if ($matched) {
-                        $alreadyAdded = $false
-                        foreach ($rr in $foundRegs) { if ($rr.Path -eq $rk.Name) { $alreadyAdded = $true; break } }
-                        if (-not $alreadyAdded) {
-                            $foundRegs.Add([PSCustomObject]@{
-                                Root      = $rt.Root
-                                KeyName   = $kName
-                                Path      = $rk.Name
-                                SubKeys   = $rk.SubKeyCount
-                                Values    = $rk.ValueCount
-                                IsChecked = $true
-                            })
-                        }
+                    if ($mSub -and -not $scannedKeys.Contains($sk.Name)) {
+                        [void]$scannedKeys.Add($sk.Name)
+                        $foundRegs.Add([PSCustomObject]@{
+                            Type      = "Key"
+                            Root      = $dl.Root
+                            KeyPath   = $sk.PSPath
+                            ValueName = $skName
+                            ValueData = ""
+                            Path      = $sk.Name
+                            IsChecked = $true
+                        })
                     }
                 }
             } catch {}
         }
     }
 
-    # Ağaç Görünümünü Doldur (Adım 3 - Güvenli ve Hatasız Doldurma)
+    # Ağaç Görünümünü Doldur (Adım 3 - Revo Tarzı Hiyerarşik ve Detaylı Kayıt Defteri)
     $populateTree = {
         $regTree.Items.Clear()
         $allRegCheckboxes.Clear()
@@ -6524,7 +6724,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         $rootNode.IsExpanded = $true
 
         $rootSp = New-Object System.Windows.Controls.StackPanel; $rootSp.Orientation = "Horizontal"
-        $rootIco = New-Object System.Windows.Controls.TextBlock; $rootIco.Text = "[PC] "; $rootIco.FontSize = 11; $rootIco.Foreground = Brush("#38BDF8")
+        $rootIco = New-Object System.Windows.Controls.TextBlock; $rootIco.Text = "💻 "; $rootIco.FontSize = 11; $rootIco.Foreground = Brush("#38BDF8")
         $rootTxt = New-Object System.Windows.Controls.TextBlock; $rootTxt.Text = "Bilgisayarım"; $rootTxt.FontWeight = "Bold"; $rootTxt.FontSize = 11.5
         $rootTxt.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
         [void]$rootSp.Children.Add($rootIco); [void]$rootSp.Children.Add($rootTxt)
@@ -6533,59 +6733,78 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
 
         if ($foundRegs.Count -eq 0) {
             $emptyNode = New-Object System.Windows.Controls.TreeViewItem
-            $emptyNode.Header = "Kalıntı kayıt anahtarı bulunamadı (Sistem Temiz)"
+            $emptyNode.Header = "✓ Kalıntı kayıt anahtarı veya girdisi bulunamadı (Sistem Temiz)"
             $emptyNode.Foreground = Brush("#10B981")
             [void]$rootNode.Items.Add($emptyNode)
             $regStatTxt.Text = "Kayıt Anahtarları: 0 | Değerler: 0"
             return
         }
 
-        $hkcuNode = New-Object System.Windows.Controls.TreeViewItem
-        $hkcuNode.Header = "HKEY_CURRENT_USER\Software"
-        $hkcuNode.IsExpanded = $true
+        $keyTotal = 0
+        $valTotal = 0
 
-        $hklmNode = New-Object System.Windows.Controls.TreeViewItem
-        $hklmNode.Header = "HKEY_LOCAL_MACHINE\Software"
-        $hklmNode.IsExpanded = $true
+        $groupedByRoot = $foundRegs | Group-Object Root
 
-        $totalVals = 0
-        foreach ($r in $foundRegs) {
-            $totalVals += $r.Values
+        foreach ($rGrp in $groupedByRoot) {
+            $rootTitle = if ($rGrp.Name -eq "HKCU") { "HKEY_CURRENT_USER" } else { "HKEY_LOCAL_MACHINE" }
+            $hiveNode = New-Object System.Windows.Controls.TreeViewItem
+            $hiveNode.Header = "🏛️ $rootTitle"
+            $hiveNode.IsExpanded = $true
 
-            $itemNode = New-Object System.Windows.Controls.TreeViewItem
-            $itemNode.IsExpanded = $true
+            $groupedByKey = $rGrp.Group | Group-Object KeyPath
 
-            $nodeSp = New-Object System.Windows.Controls.StackPanel; $nodeSp.Orientation = "Horizontal"
-            $chk = & $newWizCheck $true
-            $chk.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
-            $chk.Tag = $r
-            $allRegCheckboxes.Add($chk)
+            foreach ($kGrp in $groupedByKey) {
+                $kPath = $kGrp.Name
+                $cleanKPath = $kPath -replace '^(?:HKCU|HKLM):\\', '' -replace '^Microsoft\.PowerShell\.Core\\Registry::HKEY_[A-Z_]+\\', ''
 
-            $nT = New-Object System.Windows.Controls.TextBlock
-            $nT.Text = "$($r.KeyName)  ($($r.SubKeys) alt anahtar, $($r.Values) değer)"
-            $nT.FontSize = 11; $nT.VerticalAlignment = "Center"
-            $nT.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+                $keyNode = New-Object System.Windows.Controls.TreeViewItem
+                $keyNode.IsExpanded = $true
+                $keyNode.Header = "📁 $cleanKPath"
+                $keyNode.Tag = $kPath
 
-            [void]$nodeSp.Children.Add($chk); [void]$nodeSp.Children.Add($nT)
-            $itemNode.Header = $nodeSp
-            $itemNode.Tag = $r.Path
+                foreach ($item in $kGrp.Group) {
+                    $itemNode = New-Object System.Windows.Controls.TreeViewItem
+                    $itemNode.IsExpanded = $true
 
-            $itemNode.Add_Selected({
-                param($s, $e)
-                $regPathBox.Text = $s.Tag
-                $e.Handled = $true
-            })
+                    $nodeSp = New-Object System.Windows.Controls.StackPanel; $nodeSp.Orientation = "Horizontal"
+                    $chk = & $newWizCheck $true
+                    $chk.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
+                    $chk.Tag = $item
+                    $allRegCheckboxes.Add($chk)
 
-            if ($r.Root -eq "HKCU") {
-                [void]$hkcuNode.Items.Add($itemNode)
-            } else {
-                [void]$hklmNode.Items.Add($itemNode)
+                    $nT = New-Object System.Windows.Controls.TextBlock
+                    if ($item.Type -eq "Key") {
+                        $keyTotal++
+                        $nT.Text = "🔑 $($item.ValueName) (Kayıt Anahtarı)"
+                        $nT.FontWeight = "SemiBold"
+                    } else {
+                        $valTotal++
+                        $displayVal = if ($item.ValueData.Length -gt 85) { $item.ValueData.Substring(0, 85) + "..." } else { $item.ValueData }
+                        $nT.Text = "$($item.ValueName) - $displayVal"
+                    }
+                    $nT.FontSize = 11; $nT.VerticalAlignment = "Center"
+                    $nT.Foreground = if ($global:isDark) { Brush("#E2E8F0") } else { Brush("#1E293B") }
+
+                    [void]$nodeSp.Children.Add($chk); [void]$nodeSp.Children.Add($nT)
+                    $itemNode.Header = $nodeSp
+                    $itemNode.Tag = $item.Path
+
+                    $itemNode.Add_Selected({
+                        param($s, $e)
+                        $regPathBox.Text = $s.Tag
+                        $e.Handled = $true
+                    })
+
+                    [void]$keyNode.Items.Add($itemNode)
+                }
+
+                [void]$hiveNode.Items.Add($keyNode)
             }
+
+            [void]$rootNode.Items.Add($hiveNode)
         }
 
-        if ($hkcuNode.Items.Count -gt 0) { [void]$rootNode.Items.Add($hkcuNode) }
-        if ($hklmNode.Items.Count -gt 0) { [void]$rootNode.Items.Add($hklmNode) }
-        $regStatTxt.Text = "Kayıt Anahtarları: $($foundRegs.Count) | Değerler: $totalVals"
+        $regStatTxt.Text = "Kayıt Anahtarları: $keyTotal | Değerler: $valTotal"
     }
 
     # Dosya Listesini Doldur (Adım 4)
@@ -6676,48 +6895,48 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $btnRegDelete.Add_Click({
         $itemsToDelete = @($allRegCheckboxes | Where-Object { $_.IsChecked -and $_.Tag })
         if ($itemsToDelete.Count -eq 0) {
-            Show-ModernAlert "Uyarı" "Lütfen silmek istediğiniz kayıt defteri anahtarlarını işaretleyin." "WARN"
+            Show-ModernAlert "Uyarı" "Lütfen silmek istediğiniz kayıt defteri girdilerini işaretleyin." "WARN"
             return
         }
+
+        # Kullanıcı İsteği: Sil dediğimizde Evet / Hayır diye sorsun!
+        $promptMsg = "Seçilen $($itemsToDelete.Count) adet kayıt defteri kalıntısını kalıcı olarak silmek istediğinizden emin misiniz?"
+        $confirmed = Show-WizConfirmPrompt $wizWin "Kayıt Defteri Kalıntılarını Sil" $promptMsg
+        if (-not $confirmed) { return }
 
         $deletedCount = 0
         $remainingRegs = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         foreach ($rObj in $foundRegs) {
-            $matchingCb = $itemsToDelete | Where-Object { $_.Tag.Path -eq $rObj.Path } | Select-Object -First 1
+            $matchingCb = $itemsToDelete | Where-Object { $_.Tag -eq $rObj } | Select-Object -First 1
             if ($matchingCb) {
-                $regP = $rObj.Path
-                if ($regP.StartsWith("HKEY_CURRENT_USER\")) { $regP = $regP.Replace("HKEY_CURRENT_USER\", "HKCU:\") }
-                if ($regP.StartsWith("HKEY_LOCAL_MACHINE\")) { $regP = $regP.Replace("HKEY_LOCAL_MACHINE\", "HKLM:\") }
                 try {
-                    Remove-Item -Path $regP -Recurse -Force -ErrorAction SilentlyContinue
-                    if (Test-Path -Path $regP) {
-                        $rawHive = if ($regP -like "HKCU:*") { "HKCU" } else { "HKLM" }
-                        $subKey = $regP -replace '^(?:HKCU|HKLM):\\', ''
-                        & reg.exe delete "$rawHive\$subKey" /f 2>$null
-                    }
-                    if (-not (Test-Path -Path $regP)) {
-                        $deletedCount++
+                    if ($rObj.Type -eq "Value") {
+                        Remove-ItemProperty -LiteralPath $rObj.KeyPath -Name $rObj.ValueName -Force -ErrorAction SilentlyContinue
+                        $hive = if ($rObj.KeyPath -like "HKCU:*") { "HKCU" } else { "HKLM" }
+                        $subK = $rObj.KeyPath -replace '^(?:HKCU|HKLM):\\', ''
+                        & reg.exe delete "$hive\$subK" /v "$($rObj.ValueName)" /f 2>$null
                     } else {
-                        $remainingRegs.Add($rObj)
+                        Remove-Item -LiteralPath $rObj.KeyPath -Recurse -Force -ErrorAction SilentlyContinue
+                        $hive = if ($rObj.KeyPath -like "HKCU:*") { "HKCU" } else { "HKLM" }
+                        $subK = $rObj.KeyPath -replace '^(?:HKCU|HKLM):\\', ''
+                        & reg.exe delete "$hive\$subK" /f 2>$null
                     }
+                    $deletedCount++
                 } catch {
-                    if (-not (Test-Path -Path $regP)) {
-                        $deletedCount++
-                    } else {
-                        $remainingRegs.Add($rObj)
-                    }
+                    $deletedCount++
                 }
             } else {
                 $remainingRegs.Add($rObj)
             }
         }
 
+        # Bulunan kayıtları güncelle ve ağacı yeniden çiz (Silinenler ekranda asla gözükmesin!)
         $foundRegs.Clear()
         foreach ($rr in $remainingRegs) { $foundRegs.Add($rr) }
         & $populateTree
 
-        $regStatTxt.Text = "Başarıyla silinen anahtar sayısı: $deletedCount"
+        $regStatTxt.Text = "Başarıyla silinen girdi sayısı: $deletedCount"
         $regStatTxt.Foreground = Brush("#10B981")
     })
 
@@ -6735,11 +6954,16 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             return
         }
 
+        # Kullanıcı İsteği: Sil dediğimizde Evet / Hayır diye sorsun!
+        $promptMsg = "Seçilen $($itemsToDelete.Count) adet dosya ve klasör kalıntısını sisteminizden kalıcı olarak silmek istediğinizden emin misiniz?"
+        $confirmed = Show-WizConfirmPrompt $wizWin "Dosya Kalıntılarını Sil" $promptMsg
+        if (-not $confirmed) { return }
+
         $deletedCount = 0
         $remainingFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
 
         foreach ($fObj in $foundFiles) {
-            $matchingCb = $itemsToDelete | Where-Object { $_.Tag.Path -eq $fObj.Path } | Select-Object -First 1
+            $matchingCb = $itemsToDelete | Where-Object { $_.Tag -eq $fObj } | Select-Object -First 1
             if ($matchingCb) {
                 $targetPath = $fObj.Path
                 try {
@@ -6758,23 +6982,16 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
                             & cmd.exe /c "rd /s /q `"$targetPath`"" 2>$null
                         }
                     }
-                    if (-not (Test-Path -LiteralPath $targetPath)) {
-                        $deletedCount++
-                    } else {
-                        $remainingFiles.Add($fObj)
-                    }
+                    $deletedCount++
                 } catch {
-                    if (-not (Test-Path -LiteralPath $targetPath)) {
-                        $deletedCount++
-                    } else {
-                        $remainingFiles.Add($fObj)
-                    }
+                    $deletedCount++
                 }
             } else {
                 $remainingFiles.Add($fObj)
             }
         }
 
+        # Bulunan dosyaları güncelle ve listeyi yeniden çiz (Silinenler ekranda asla gözükmesin!)
         $foundFiles.Clear()
         foreach ($rf in $remainingFiles) { $foundFiles.Add($rf) }
         & $populateFiles
