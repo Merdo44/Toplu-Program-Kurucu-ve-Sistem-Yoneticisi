@@ -3329,14 +3329,58 @@ function Render-QueuePanel {
         $srcTxt.FontWeight = "SemiBold"
 
         if ($state.IsInstalled) {
-            # YUKLU OLANLAR: Asla 'Standart (Web)' ve degistirme butonu gosterme (Resim 3 duzeltmesi)
+            # YUKLU OLANLAR: Durum rozeti
             $srcBadge.Background = if ($global:isDark) { Brush("#064E3B") } else { Brush("#DCFCE7") }
             $srcBadge.BorderBrush = if ($global:isDark) { Brush("#059669") } else { Brush("#86EFAC") }
             $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-            $srcTxt.Text = if ($state.HasUpdate) { "⚡ Güncelleme Mevcut" } else { "✓ Yüklü (Kaldırılabilir)" }
+            $srcTxt.Text = if ($state.HasUpdate) { "⚡ Güncelleme" } else { "✓ Yüklü" }
             $srcTxt.Foreground = if ($global:isDark) { Brush("#34D399") } else { Brush("#15803D") }
             $srcBadge.Child = $srcTxt
             [void]$badgeSp.Children.Add($srcBadge)
+
+            # KUYRUKTA SEÇİLEBİLİR DERİN TEMİZLİK ROZETİ (Açık / Kapalı)
+            if ($null -eq $state.App.DoDeepClean) { $state.App.DoDeepClean = $true }
+
+            $deepBadge = New-Object System.Windows.Controls.Border
+            $deepBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
+            $deepBadge.Padding = New-Object System.Windows.Thickness(5, 1, 5, 1)
+            $deepBadge.Margin = New-Object System.Windows.Thickness(4, 0, 0, 0)
+            $deepBadge.Cursor = "Hand"
+
+            $deepTxt = New-Object System.Windows.Controls.TextBlock
+            $deepTxt.FontSize = 9.5
+            $deepTxt.FontWeight = "SemiBold"
+
+            if ($state.App.DoDeepClean) {
+                $deepBadge.Background = if ($global:isDark) { Brush("#2E1065") } else { Brush("#F3E8FF") }
+                $deepBadge.BorderBrush = Brush("#7C3AED")
+                $deepBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+                $deepTxt.Text = "🧹 Derin Temizlik"
+                $deepTxt.Foreground = if ($global:isDark) { Brush("#C084FC") } else { Brush("#7C3AED") }
+                $deepBadge.ToolTip = "Derin temizlik açık. Standart kaldırmaya geçmek için tıklayın."
+            } else {
+                $deepBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
+                $deepBadge.BorderBrush = Brush("#475569")
+                $deepBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+                $deepTxt.Text = "⚡ Standart Kaldır"
+                $deepTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+                $deepBadge.ToolTip = "Standart kaldırma. Derin temizliği açmak için tıklayın."
+            }
+            $deepBadge.Child = $deepTxt
+
+            $toggleDeepClick = {
+                param($s, $e)
+                $e.Handled = $true
+                $aRef = $s.Tag
+                $aRef.DoDeepClean = -not $aRef.DoDeepClean
+                Render-QueuePanel
+            }
+            $deepBadge.Tag = $state.App
+            $deepTxt.Tag = $state.App
+            $deepBadge.Add_PreviewMouseLeftButtonDown($toggleDeepClick)
+            $deepTxt.Add_PreviewMouseLeftButtonDown($toggleDeepClick)
+
+            [void]$badgeSp.Children.Add($deepBadge)
         } else {
             $isStoreChosen = ($state.App.SelectedSource -eq "Store") -or ($state.App.Id -match '^[A-Z0-9]{12,14}$' -and -not $state.App.NormalId)
             $isDual = ($state.App.HasDual -eq "1") -or ($state.App.StoreId -and ($state.App.NormalId -or $state.App.DownloadUrl -or ($state.App.Id -and $state.App.Id -ne $state.App.StoreId)))
@@ -5590,6 +5634,17 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     [System.Windows.Controls.Grid]::SetRow($listBorder, 1)
     [void]$mGrid.Children.Add($listBorder)
 
+    # İsteğe Bağlı Derin Temizlik Onay Kutusu
+    $chkBatchDeep = $null
+    if ($operation -eq "Kaldir") {
+        if ($null -eq $global:batchDoDeepClean) { $global:batchDoDeepClean = $true }
+        $chkBatchDeep = New-ModernCheck "Kaldırma işlemi sonrasında Derin Temizlik yapılsın (Kalıntı Taraması)" ($global:batchDoDeepClean -ne $false)
+        $chkBatchDeep.Margin = New-Object System.Windows.Thickness(4, 10, 0, 0)
+        [System.Windows.Controls.Grid]::SetRow($chkBatchDeep, 1)
+        $chkBatchDeep.VerticalAlignment = "Bottom"
+        [void]$mGrid.Children.Add($chkBatchDeep)
+    }
+
     # 3. ACTION BUTTONS (Evet / Hayır)
     $btnGrid = New-Object System.Windows.Controls.Grid
     $btnGrid.Margin = New-Object System.Windows.Thickness(0, 16, 0, 0)
@@ -5635,6 +5690,9 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     $btnYes.Margin = New-Object System.Windows.Thickness(6, 0, 0, 0)
     $btnYes.Add_Click({
         $script:confirmResult = $true
+        if ($chkBatchDeep) {
+            $global:batchDoDeepClean = $chkBatchDeep.IsChecked
+        }
         $cWin.Close()
     })
     [System.Windows.Controls.Grid]::SetColumn($btnYes, 1)
@@ -6179,6 +6237,16 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $navBtnSp = New-Object System.Windows.Controls.StackPanel
     $navBtnSp.Orientation = "Horizontal"
 
+    # Standart Kaldır Butonu (Derin temizliği atla)
+    $btnSkipDeep = New-ModernBtn "Standart Kaldır" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#94A3B8" } else { "#475569" }) 8 11.5
+    $btnSkipDeep.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+    $btnSkipDeep.ToolTip = "Kalıntı taraması yapmadan yalnızca standart kaldırma işlemini tamamlar."
+    $btnSkipDeep.Add_Click({
+        $wizWin.Close()
+        Show-ModernAlert "Standart Kaldırma" "'$targetName' uygulaması standart olarak kaldırıldı. Kalıntı taraması atlandı." "OK"
+    })
+    [void]$navBtnSp.Children.Add($btnSkipDeep)
+
     # İptal Butonu (Yuvarlak Köşeli)
     $btnCancel = New-ModernBtn "İptal" (if ($global:isDark) { "#1E293B" } else { "#E2E8F0" }) (if ($global:isDark) { "#F8FAFC" } else { "#0F172A" }) 8 11.5
     $btnCancel.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
@@ -6505,6 +6573,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             $btnNext.Content = "Tara"
             $btnNext.Background = Brush("#10B981")
 
+            $btnSkipDeep.Visibility = [System.Windows.Visibility]::Collapsed
             $step1.Visibility = [System.Windows.Visibility]::Collapsed
             $step2.Visibility = [System.Windows.Visibility]::Visible
 
@@ -6959,10 +7028,14 @@ function Invoke-BatchOperation([string]$operation) {
                     }
                 }
 
-                # DERİN TEMİZLİK SİHİRBAZI (4 AŞAMALI ENTEGRASYON)
-                try {
-                    Show-DeepCleanWizard $app
-                } catch {}
+                # DERİN TEMİZLİK SİHİRBAZI (İsteğe Bağlı Seçim)
+                if ($app.DoDeepClean -ne $false -and $global:batchDoDeepClean -ne $false) {
+                    try {
+                        Show-DeepCleanWizard $app
+                    } catch {}
+                } else {
+                    Set-Status "$($app.Name) standart olarak kaldırıldı (Derin temizlik atlandı)." "SUCCESS"
+                }
             }
 
             # Hash Uyuşmazlığı durumunda (üretici yeni sürüm yayınlamış ama winget manifesti eski kalmış)
