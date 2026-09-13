@@ -5965,6 +5965,43 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     [System.Windows.Controls.Grid]::SetRow($hdrGrid, 0)
     [void]$rootGrid.Children.Add($hdrGrid)
 
+        # Modern Vektörel CheckBox Üreteci (Derin Temizlik Sihirbazı İçin Özel Tasarım)
+    $newWizCheck = {
+        param([bool]$isChecked = $true)
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.IsChecked = $isChecked
+        $cb.VerticalAlignment = "Center"
+        $cb.Cursor = "Hand"
+        $cBg = if ($global:isDark) { "#111827" } else { "#F8FAFC" }
+        $cBrd = if ($global:isDark) { "#334155" } else { "#CBD5E1" }
+        $cChkBrd = "#10B981"
+        $cChkBg = if ($global:isDark) { "#0F172A" } else { "#ECFDF5" }
+        $xaml = @"
+<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="CheckBox">
+    <Grid Background="Transparent" VerticalAlignment="Center" HorizontalAlignment="Center" Cursor="Hand">
+        <Border Name="box" Width="18" Height="18" CornerRadius="5" Background="$cBg" BorderBrush="$cBrd" BorderThickness="1.5">
+            <Path Name="check" Data="M3,8.5 L7,12.5 L15,4" Stroke="#10B981" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+    </Grid>
+    <ControlTemplate.Triggers>
+        <Trigger Property="IsChecked" Value="True">
+            <Setter TargetName="check" Property="Visibility" Value="Visible"/>
+            <Setter TargetName="box" Property="Background" Value="$cChkBg"/>
+            <Setter TargetName="box" Property="BorderBrush" Value="$cChkBrd"/>
+        </Trigger>
+        <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="box" Property="BorderBrush" Value="#38BDF8"/>
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+            <Setter TargetName="box" Property="Opacity" Value="0.4"/>
+        </Trigger>
+    </ControlTemplate.Triggers>
+</ControlTemplate>
+"@
+        $cb.Template = [System.Windows.Markup.XamlReader]::Parse($xaml)
+        return $cb
+    }
+
     $foundFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
     $foundRegs  = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -6519,8 +6556,8 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             $itemNode.IsExpanded = $true
 
             $nodeSp = New-Object System.Windows.Controls.StackPanel; $nodeSp.Orientation = "Horizontal"
-            $chk = New-Object System.Windows.Controls.CheckBox; $chk.IsChecked = $true
-            $chk.VerticalAlignment = "Center"; $chk.Margin = New-Object System.Windows.Thickness(0, 0, 6, 0)
+            $chk = & $newWizCheck $true
+            $chk.Margin = New-Object System.Windows.Thickness(0, 0, 8, 0)
             $chk.Tag = $r
             $allRegCheckboxes.Add($chk)
 
@@ -6578,6 +6615,14 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         $hc3 = New-Object System.Windows.Controls.ColumnDefinition; $hc3.Width = New-Object System.Windows.GridLength(110)
         [void]$hGrid.ColumnDefinitions.Add($hc0); [void]$hGrid.ColumnDefinitions.Add($hc1); [void]$hGrid.ColumnDefinitions.Add($hc2); [void]$hGrid.ColumnDefinitions.Add($hc3)
 
+        $thChk = & $newWizCheck $true
+        $thChk.ToolTip = "Tümünü Seç / Bırak"
+        $thChk.Add_Click({
+            $targetState = $thChk.IsChecked
+            foreach ($c in $allFileCheckboxes) { $c.IsChecked = $targetState }
+        })
+        [System.Windows.Controls.Grid]::SetColumn($thChk, 0); [void]$hGrid.Children.Add($thChk)
+
         $th1 = New-Object System.Windows.Controls.TextBlock; $th1.Text = "Yol"; $th1.FontWeight = "Bold"; $th1.FontSize = 10.5; $th1.Foreground = Brush("#94A3B8")
         $th2 = New-Object System.Windows.Controls.TextBlock; $th2.Text = "Boyut"; $th2.FontWeight = "Bold"; $th2.FontSize = 10.5; $th2.Foreground = Brush("#94A3B8")
         $th3 = New-Object System.Windows.Controls.TextBlock; $th3.Text = "Tarih"; $th3.FontWeight = "Bold"; $th3.FontSize = 10.5; $th3.Foreground = Brush("#94A3B8")
@@ -6597,8 +6642,7 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             $rc3 = New-Object System.Windows.Controls.ColumnDefinition; $rc3.Width = New-Object System.Windows.GridLength(110)
             [void]$rowGrid.ColumnDefinitions.Add($rc0); [void]$rowGrid.ColumnDefinitions.Add($rc1); [void]$rowGrid.ColumnDefinitions.Add($rc2); [void]$rowGrid.ColumnDefinitions.Add($rc3)
 
-            $chk = New-Object System.Windows.Controls.CheckBox; $chk.IsChecked = $true
-            $chk.VerticalAlignment = "Center"
+            $chk = & $newWizCheck $true
             $chk.Tag = $f
             $allFileCheckboxes.Add($chk)
             [System.Windows.Controls.Grid]::SetColumn($chk, 0); [void]$rowGrid.Children.Add($chk)
@@ -6630,22 +6674,50 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         foreach ($cb in $allRegCheckboxes) { $cb.IsChecked = $false }
     })
     $btnRegDelete.Add_Click({
-        $deleted = 0
-        foreach ($cb in $allRegCheckboxes) {
-            if ($cb.IsChecked -and $cb.Tag) {
-                $r = $cb.Tag
+        $itemsToDelete = @($allRegCheckboxes | Where-Object { $_.IsChecked -and $_.Tag })
+        if ($itemsToDelete.Count -eq 0) {
+            Show-ModernAlert "Uyarı" "Lütfen silmek istediğiniz kayıt defteri anahtarlarını işaretleyin." "WARN"
+            return
+        }
+
+        $deletedCount = 0
+        $remainingRegs = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+        foreach ($rObj in $foundRegs) {
+            $matchingCb = $itemsToDelete | Where-Object { $_.Tag.Path -eq $rObj.Path } | Select-Object -First 1
+            if ($matchingCb) {
+                $regP = $rObj.Path
+                if ($regP.StartsWith("HKEY_CURRENT_USER\")) { $regP = $regP.Replace("HKEY_CURRENT_USER\", "HKCU:\") }
+                if ($regP.StartsWith("HKEY_LOCAL_MACHINE\")) { $regP = $regP.Replace("HKEY_LOCAL_MACHINE\", "HKLM:\") }
                 try {
-                    $regP = $r.Path
-                    if ($regP.StartsWith("HKEY_CURRENT_USER\")) { $regP = $regP.Replace("HKEY_CURRENT_USER\", "HKCU:\") }
-                    if ($regP.StartsWith("HKEY_LOCAL_MACHINE\")) { $regP = $regP.Replace("HKEY_LOCAL_MACHINE\", "HKLM:\") }
                     Remove-Item -Path $regP -Recurse -Force -ErrorAction SilentlyContinue
-                    $deleted++
-                    $cb.IsEnabled = $false
-                    $cb.IsChecked = $false
-                } catch {}
+                    if (Test-Path -Path $regP) {
+                        $rawHive = if ($regP -like "HKCU:*") { "HKCU" } else { "HKLM" }
+                        $subKey = $regP -replace '^(?:HKCU|HKLM):\\', ''
+                        & reg.exe delete "$rawHive\$subKey" /f 2>$null
+                    }
+                    if (-not (Test-Path -Path $regP)) {
+                        $deletedCount++
+                    } else {
+                        $remainingRegs.Add($rObj)
+                    }
+                } catch {
+                    if (-not (Test-Path -Path $regP)) {
+                        $deletedCount++
+                    } else {
+                        $remainingRegs.Add($rObj)
+                    }
+                }
+            } else {
+                $remainingRegs.Add($rObj)
             }
         }
-        $regStatTxt.Text = "Başarıyla silinen anahtar sayısı: $deleted"
+
+        $foundRegs.Clear()
+        foreach ($rr in $remainingRegs) { $foundRegs.Add($rr) }
+        & $populateTree
+
+        $regStatTxt.Text = "Başarıyla silinen anahtar sayısı: $deletedCount"
         $regStatTxt.Foreground = Brush("#10B981")
     })
 
@@ -6657,19 +6729,57 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         foreach ($cb in $allFileCheckboxes) { $cb.IsChecked = $false }
     })
     $btnFileDelete.Add_Click({
-        $deleted = 0
-        foreach ($cb in $allFileCheckboxes) {
-            if ($cb.IsChecked -and $cb.Tag) {
-                $f = $cb.Tag
+        $itemsToDelete = @($allFileCheckboxes | Where-Object { $_.IsChecked -and $_.Tag })
+        if ($itemsToDelete.Count -eq 0) {
+            Show-ModernAlert "Uyarı" "Lütfen silmek istediğiniz dosya veya klasörleri işaretleyin." "WARN"
+            return
+        }
+
+        $deletedCount = 0
+        $remainingFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+        foreach ($fObj in $foundFiles) {
+            $matchingCb = $itemsToDelete | Where-Object { $_.Tag.Path -eq $fObj.Path } | Select-Object -First 1
+            if ($matchingCb) {
+                $targetPath = $fObj.Path
                 try {
-                    Remove-Item -LiteralPath $f.Path -Recurse -Force -ErrorAction SilentlyContinue
-                    $deleted++
-                    $cb.IsEnabled = $false
-                    $cb.IsChecked = $false
-                } catch {}
+                    if (Test-Path -LiteralPath $targetPath) {
+                        try { [System.IO.File]::SetAttributes($targetPath, [System.IO.FileAttributes]::Normal) } catch {}
+                        Remove-Item -LiteralPath $targetPath -Recurse -Force -ErrorAction SilentlyContinue
+                        if (Test-Path -LiteralPath $targetPath) {
+                            if ([System.IO.Directory]::Exists($targetPath)) {
+                                [System.IO.Directory]::Delete($targetPath, $true)
+                            } else {
+                                [System.IO.File]::Delete($targetPath)
+                            }
+                        }
+                        if (Test-Path -LiteralPath $targetPath) {
+                            & cmd.exe /c "del /f /q /a `"$targetPath`"" 2>$null
+                            & cmd.exe /c "rd /s /q `"$targetPath`"" 2>$null
+                        }
+                    }
+                    if (-not (Test-Path -LiteralPath $targetPath)) {
+                        $deletedCount++
+                    } else {
+                        $remainingFiles.Add($fObj)
+                    }
+                } catch {
+                    if (-not (Test-Path -LiteralPath $targetPath)) {
+                        $deletedCount++
+                    } else {
+                        $remainingFiles.Add($fObj)
+                    }
+                }
+            } else {
+                $remainingFiles.Add($fObj)
             }
         }
-        $fileStatTxt.Text = "Başarıyla silinen klasör/dosya sayısı: $deleted"
+
+        $foundFiles.Clear()
+        foreach ($rf in $remainingFiles) { $foundFiles.Add($rf) }
+        & $populateFiles
+
+        $fileStatTxt.Text = "Başarıyla silinen dosya/klasör sayısı: $deletedCount"
         $fileStatTxt.Foreground = Brush("#10B981")
     })
 
