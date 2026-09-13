@@ -1,4 +1,4 @@
-﻿# Derlenmiş ikili dosyalar
+# Derlenmiş ikili dosyalar
 *.exe
 *.dll
 
@@ -6,6 +6,8 @@
 *.bak
 *.tmp
 *.log
+*.old
+error_log.txt
 user_settings.json
 
 # Node bağımlılıkları

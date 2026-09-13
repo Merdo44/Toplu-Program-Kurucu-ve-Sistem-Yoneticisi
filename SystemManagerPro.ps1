@@ -2952,9 +2952,15 @@ function Show-ModernAlert([string]$title, [string]$message, [string]$kind = "WAR
 function Render-QueuePanel {
     $queueStackPanel.Children.Clear()
     $count = $global:selectedQueue.Count
-    $lblQueueHeader.Text = "Kurulum Sırası ($count)"
+    $isInstalledBatch = ($global:selectedQueue | Where-Object { $_.Tag.IsInstalled }).Count -gt 0
+    if ($isInstalledBatch) {
+        $lblQueueHeader.Text = "İşlem Sırası ($count)"
+        $txtSelectedCount.Text = "$count yüklü uygulama seçili"
+    } else {
+        $lblQueueHeader.Text = "Kurulum Sırası ($count)"
+        $txtSelectedCount.Text = "$count program sırada"
+    }
     Update-PrefSourceButton
-    $txtSelectedCount.Text = "$count program sırada"
 
     for ($i = 0; $i -lt $count; $i++) {
         $card = $global:selectedQueue[$i]
@@ -3057,78 +3063,89 @@ function Render-QueuePanel {
         $srcTxt.FontSize = 9.5
         $srcTxt.FontWeight = "SemiBold"
 
-        $isStoreChosen = ($state.App.SelectedSource -eq "Store") -or ($state.App.Id -match '^[A-Z0-9]{12,14}$' -and -not $state.App.NormalId)
-        $isDual = ($state.App.HasDual -eq "1") -or ($state.App.StoreId -and ($state.App.NormalId -or $state.App.DownloadUrl -or ($state.App.Id -and $state.App.Id -ne $state.App.StoreId)))
-
-        if ($isStoreChosen) {
-            $srcBadge.Background = if ($global:isDark) { Brush("#2E1065") } else { Brush("#F3E8FF") }
-            $srcBadge.BorderBrush = Brush("#7C3AED")
+        if ($state.IsInstalled) {
+            # YUKLU OLANLAR: Asla 'Standart (Web)' ve degistirme butonu gosterme (Resim 3 duzeltmesi)
+            $srcBadge.Background = if ($global:isDark) { Brush("#064E3B") } else { Brush("#DCFCE7") }
+            $srcBadge.BorderBrush = if ($global:isDark) { Brush("#059669") } else { Brush("#86EFAC") }
             $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-            $srcTxt.Text = "🛍️ Microsoft Store"
-            $srcTxt.Foreground = if ($global:isDark) { Brush("#C084FC") } else { Brush("#7C3AED") }
-        } elseif ($isDual -or $state.App.SelectedSource -eq "Normal") {
-            $srcBadge.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
-            $srcBadge.BorderBrush = Brush("#0284C7")
-            $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-            $srcTxt.Text = "🌐 Standart (Web)"
-            $srcTxt.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
+            $srcTxt.Text = if ($state.HasUpdate) { "⚡ Güncelleme Mevcut" } else { "✓ Yüklü (Kaldırılabilir)" }
+            $srcTxt.Foreground = if ($global:isDark) { Brush("#34D399") } else { Brush("#15803D") }
+            $srcBadge.Child = $srcTxt
+            [void]$badgeSp.Children.Add($srcBadge)
         } else {
-            $srcBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
-            $srcBadge.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
-            $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-            $srcTxt.Text = "⚡ WinGet Paket"
-            $srcTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
-        }
+            $isStoreChosen = ($state.App.SelectedSource -eq "Store") -or ($state.App.Id -match '^[A-Z0-9]{12,14}$' -and -not $state.App.NormalId)
+            $isDual = ($state.App.HasDual -eq "1") -or ($state.App.StoreId -and ($state.App.NormalId -or $state.App.DownloadUrl -or ($state.App.Id -and $state.App.Id -ne $state.App.StoreId)))
 
-        if ($isDual) {
-            $srcBadge.Cursor = "Hand"
-            $srcBadge.ToolTip = "Kaynağı değiştirmek için tıklayın (Web ⇄ Store)"
-            $srcTxt.Text += " ⇄"
-
-            $srcToggleData = @{ App = $state.App; Card = $card; IsSourceToggle = $true }
-            $srcBadge.Tag = $srcToggleData
-            $srcTxt.Tag = $srcToggleData
-
-            # Hover efektleri
-            $srcBadge.Add_MouseEnter({
-                param($s, $e)
-                $appRef = $s.Tag.App
-                if ($appRef.SelectedSource -eq "Store") {
-                    $s.Background = Brush("#3B0764"); $s.BorderBrush = Brush("#A855F7")
-                } else {
-                    $s.Background = Brush("#0369A1"); $s.BorderBrush = Brush("#38BDF8")
-                }
-            })
-            $srcBadge.Add_MouseLeave({
-                param($s, $e)
-                $appRef = $s.Tag.App
-                if ($appRef.SelectedSource -eq "Store") {
-                    $s.Background = if ($global:isDark) { Brush("#2E1065") } else { Brush("#F3E8FF") }
-                    $s.BorderBrush = Brush("#7C3AED")
-                } else {
-                    $s.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
-                    $s.BorderBrush = Brush("#0284C7")
-                }
-            })
-
-            $queueBadgeClick = {
-                param($s, $e)
-                $e.Handled = $true
-                $tCard = $s.Tag.Card
-                $tApp = $s.Tag.App
-                if ($tApp.SelectedSource -eq "Store") {
-                    $tApp.SelectedSource = "Normal"
-                } else {
-                    $tApp.SelectedSource = "Store"
-                }
-                Update-CardSourceBadge $tCard $tApp.SelectedSource
-                Render-QueuePanel
+            if ($isStoreChosen) {
+                $srcBadge.Background = if ($global:isDark) { Brush("#2E1065") } else { Brush("#F3E8FF") }
+                $srcBadge.BorderBrush = Brush("#7C3AED")
+                $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+                $srcTxt.Text = "🛍️ Microsoft Store"
+                $srcTxt.Foreground = if ($global:isDark) { Brush("#C084FC") } else { Brush("#7C3AED") }
+            } elseif ($isDual -or $state.App.SelectedSource -eq "Normal") {
+                $srcBadge.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
+                $srcBadge.BorderBrush = Brush("#0284C7")
+                $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+                $srcTxt.Text = "🌐 Standart (Web)"
+                $srcTxt.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
+            } else {
+                $srcBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
+                $srcBadge.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+                $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
+                $srcTxt.Text = "⚡ WinGet Paket"
+                $srcTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
             }
-            $srcBadge.Add_PreviewMouseLeftButtonDown($queueBadgeClick)
-            $srcTxt.Add_PreviewMouseLeftButtonDown($queueBadgeClick)
+
+            if ($isDual) {
+                $srcBadge.Cursor = "Hand"
+                $srcBadge.ToolTip = "Kaynağı değiştirmek için tıklayın (Web ⇄ Store)"
+                $srcTxt.Text += " ⇄"
+
+                $srcToggleData = @{ App = $state.App; Card = $card; IsSourceToggle = $true }
+                $srcBadge.Tag = $srcToggleData
+                $srcTxt.Tag = $srcToggleData
+
+                # Hover efektleri
+                $srcBadge.Add_MouseEnter({
+                    param($s, $e)
+                    $appRef = $s.Tag.App
+                    if ($appRef.SelectedSource -eq "Store") {
+                        $s.Background = Brush("#3B0764"); $s.BorderBrush = Brush("#A855F7")
+                    } else {
+                        $s.Background = Brush("#0369A1"); $s.BorderBrush = Brush("#38BDF8")
+                    }
+                })
+                $srcBadge.Add_MouseLeave({
+                    param($s, $e)
+                    $appRef = $s.Tag.App
+                    if ($appRef.SelectedSource -eq "Store") {
+                        $s.Background = if ($global:isDark) { Brush("#2E1065") } else { Brush("#F3E8FF") }
+                        $s.BorderBrush = Brush("#7C3AED")
+                    } else {
+                        $s.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
+                        $s.BorderBrush = Brush("#0284C7")
+                    }
+                })
+
+                $queueBadgeClick = {
+                    param($s, $e)
+                    $e.Handled = $true
+                    $tCard = $s.Tag.Card
+                    $tApp = $s.Tag.App
+                    if ($tApp.SelectedSource -eq "Store") {
+                        $tApp.SelectedSource = "Normal"
+                    } else {
+                        $tApp.SelectedSource = "Store"
+                    }
+                    Update-CardSourceBadge $tCard $tApp.SelectedSource
+                    Render-QueuePanel
+                }
+                $srcBadge.Add_PreviewMouseLeftButtonDown($queueBadgeClick)
+                $srcTxt.Add_PreviewMouseLeftButtonDown($queueBadgeClick)
+            }
+            $srcBadge.Child = $srcTxt
+            [void]$badgeSp.Children.Add($srcBadge)
         }
-        $srcBadge.Child = $srcTxt
-        [void]$badgeSp.Children.Add($srcBadge)
         [void]$nameSp.Children.Add($badgeSp)
 
         [System.Windows.Controls.Grid]::SetColumn($nameSp, 1)
@@ -3202,31 +3219,36 @@ function Update-ActionButtonGuards {
         }
     }
 
-    # 1. Kur Butonu: Sadece henüz kurulu olmayan paketler seçiliyse aktif olur
-    if ($canInstallCount -gt 0) {
-        $btnInstall.IsEnabled = $true
-        $btnInstall.Content = "Seçilenleri Kur ($canInstallCount)"
-    } else {
+    $isInstalledBatch = ($global:selectedQueue | Where-Object { $_.Tag.IsInstalled }).Count -gt 0
+
+    if ($isInstalledBatch) {
+        # YUKLU OLANLAR SECILDIGINDE: Yukle butonu tamamen gizlenir (Resim 3 duzeltmesi)
+        $btnInstall.Visibility = [System.Windows.Visibility]::Collapsed
         $btnInstall.IsEnabled = $false
-        $btnInstall.Content = "Kur"
-    }
 
-    # 2. Güncelle Butonu: Sadece yüklü VE yeni güncellemesi bulunan uygulamalar için aktif olur
-    if ($canUpgradeCount -gt 0) {
-        $btnUpgrade.IsEnabled = $true
-        $btnUpgrade.Content = "⚡ Güncelle ($canUpgradeCount)"
-    } else {
-        $btnUpgrade.IsEnabled = $false
-        $btnUpgrade.Content = "Güncelle"
-    }
-
-    # 3. Kaldır Butonu: Sadece bilgisayarda gerçekten yüklü olan uygulamalar için aktif olur
-    if ($canUninstallCount -gt 0) {
-        $btnUninstall.IsEnabled = $true
+        $btnUninstall.Visibility = [System.Windows.Visibility]::Visible
+        $btnUninstall.IsEnabled = ($canUninstallCount -gt 0)
         $btnUninstall.Content = "Kaldır ($canUninstallCount)"
+
+        if ($canUpgradeCount -gt 0) {
+            $btnUpgrade.Visibility = [System.Windows.Visibility]::Visible
+            $btnUpgrade.IsEnabled = $true
+            $btnUpgrade.Content = "⚡ Güncelle ($canUpgradeCount)"
+        } else {
+            $btnUpgrade.Visibility = [System.Windows.Visibility]::Collapsed
+            $btnUpgrade.IsEnabled = $false
+            $btnUpgrade.Content = "Güncelle"
+        }
     } else {
+        # KURULACAKLAR SECILDIGINDE: Kaldir ve Guncelle gizlenir, sadece Kur gorunur
+        $btnInstall.Visibility = [System.Windows.Visibility]::Visible
+        $btnInstall.IsEnabled = ($canInstallCount -gt 0)
+        $btnInstall.Content = if ($canInstallCount -gt 0) { "Seçilenleri Kur ($canInstallCount)" } else { "Kur" }
+
+        $btnUninstall.Visibility = [System.Windows.Visibility]::Collapsed
         $btnUninstall.IsEnabled = $false
-        $btnUninstall.Content = "Kaldır"
+        $btnUpgrade.Visibility = [System.Windows.Visibility]::Collapsed
+        $btnUpgrade.IsEnabled = $false
     }
 
     # Akıllı durum özeti
@@ -3612,12 +3634,91 @@ function global:Update-CardSourceBadge($card, [string]$source) {
 }
 
 # --- SEÇİM MOTORU ---
+# --- SURUM & AILE CAKISMA KONTROL SISTEMI ---
+function Get-AppFamilyMembers([string]$appName) {
+    $families = @{
+        "TeamViewer"     = @("TeamViewer", "TeamViewer Host", "TeamViewer QuickSupport")
+        "Java"           = @("Java JDK 21", "Java Runtime Environment")
+        "Python"         = @("Python 3.13")
+        "Visual Studio"  = @("Visual Studio Code", "Visual Studio Community")
+    }
+    foreach ($k in $families.Keys) {
+        if ($families[$k] -contains $appName) {
+            return $families[$k]
+        }
+    }
+    return @($appName)
+}
+
+function Get-AppVersionConflictInfo($app) {
+    $familyMembers = Get-AppFamilyMembers $app.Name
+    $installedConflict = $null
+
+    foreach ($mName in $familyMembers) {
+        if ($mName -eq $app.Name) { continue }
+        $siblingCard = $global:allCards | Where-Object { $_.Tag.App.Name -eq $mName } | Select-Object -First 1
+        if ($siblingCard -and $siblingCard.Tag.IsInstalled) {
+            $installedConflict = $mName
+            break
+        }
+    }
+
+    $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
+    $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId)
+
+    return @{
+        FamilyMembers = $familyMembers
+        HasConflict   = ($installedConflict -ne $null)
+        ConflictName  = $installedConflict
+        HasDualSource = $hasDualSource
+        IsPureStore   = $isPureStore
+    }
+}
+
 function Toggle-CardSelection($card) {
     if (-not $card -or -not $card.Tag) { return }
     $state = $card.Tag
     $app = $state.App
 
     if (-not $state.IsSelected) {
+        # 1. KUYRUK AYRISTIRMA KORUMASI: Yuklu olanlar ile yuklu olmayanlar asla ayni siraya karistirılamaz!
+        $qUninstalled = @($global:selectedQueue | Where-Object { -not $_.Tag.IsInstalled })
+        $qInstalled   = @($global:selectedQueue | Where-Object { $_.Tag.IsInstalled })
+
+        if ($qUninstalled.Count -gt 0 -and $state.IsInstalled) {
+            [System.Windows.MessageBox]::Show(
+                "Kurulum sırasına sadece henüz bilgisayarınızda yüklü olmayan uygulamalar eklenebilir.`n`nYüklü bir uygulamayı kaldırmak veya güncellemek için önce sağdaki kurulum sırasını temizleyin.",
+                "Sıra Güvenlik Koruması",
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Warning
+            )
+            return
+        }
+
+        if ($qInstalled.Count -gt 0 -and (-not $state.IsInstalled)) {
+            [System.Windows.MessageBox]::Show(
+                "Kaldırma/Güncelleme sırasına yüklü olmayan uygulamalar eklenemez.`n`nYeni bir uygulama kurmak için önce sağdaki işlem sırasını temizleyin.",
+                "Sıra Güvenlik Koruması",
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Warning
+            )
+            return
+        }
+
+        # 2. SURUM VE AILE CAKISMA KORUMASI: 1 uygulamanin bir surumu yukluyse, diger surum silinmeden yuklenemez!
+        if (-not $state.IsInstalled) {
+            $confInfo = Get-AppVersionConflictInfo $app
+            if ($confInfo.HasConflict) {
+                [System.Windows.MessageBox]::Show(
+                    "Bu uygulamanın başka bir sürümü ('$($confInfo.ConflictName)') bilgisayarınızda zaten yüklü!`n`nSistem çakışması ve dosya bozulmalarını önlemek için, bu sürümü kurmadan önce mevcut '$($confInfo.ConflictName)' sürümünü kaldırmalısınız.",
+                    "Sürüm Çakışması Engellendi",
+                    [System.Windows.MessageBoxButton]::OK,
+                    [System.Windows.MessageBoxImage]::Warning
+                )
+                return
+            }
+        }
+
         # YUKLU OLANLARDA: Kaynak secim diyalogu gosterilmez, degistirilemez!
         if (-not $state.IsInstalled) {
             $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
@@ -4217,6 +4318,68 @@ function New-CompactAppCard($app) {
             [void]$isp.Children.Add($featBorder)
         }
 
+                # MEVCUT SURUMLER VE CAKISMA BILGISI KARTI
+        $verBorder = New-Object System.Windows.Controls.Border
+        $verBorder.Background = if ($global:isDark) { Brush("#101725") } else { Brush("#F8FAFC") }
+        $verBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+        $verBorder.BorderThickness = New-Object System.Windows.Thickness(1)
+        $verBorder.CornerRadius = New-Object System.Windows.CornerRadius(8)
+        $verBorder.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
+        $verBorder.Margin = New-Object System.Windows.Thickness(0, 0, 0, 10)
+
+        $verInner = New-Object System.Windows.Controls.StackPanel
+        $verLbl = New-Object System.Windows.Controls.TextBlock
+        $verLbl.Text = "MEVCUT SÜRÜMLER VE KURULUM DURUMU"
+        $verLbl.FontSize = 9.5; $verLbl.FontWeight = "Bold"
+        $verLbl.Foreground = Brush("#A78BFA")
+        $verLbl.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+        [void]$verInner.Children.Add($verLbl)
+
+        $confInfo = Get-AppVersionConflictInfo $tApp
+        if ($confInfo.FamilyMembers.Count -gt 1) {
+            $fListTxt = New-Object System.Windows.Controls.TextBlock
+            $fListTxt.Text = "Katalogdaki İlgili Sürümler: " + ($confInfo.FamilyMembers -join ", ")
+            $fListTxt.FontSize = 11; $fListTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+            $fListTxt.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
+            [void]$verInner.Children.Add($fListTxt)
+        }
+
+        if ($confInfo.HasDualSource) {
+            $dualTxt = New-Object System.Windows.Controls.TextBlock
+            $dualTxt.Text = "Kullanılabilir Paket Kaynakları: Standart Web (Winget) & Microsoft Store"
+            $dualTxt.FontSize = 11; $dualTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+            $dualTxt.Margin = New-Object System.Windows.Thickness(0, 0, 0, 4)
+            [void]$verInner.Children.Add($dualTxt)
+        }
+
+        if ($tIsInst) {
+            $instInfoTxt = New-Object System.Windows.Controls.TextBlock
+            $instInfoTxt.Text = "● Bu uygulama şu anda bilgisayarınızda kuruludur."
+            $instInfoTxt.FontSize = 11; $instInfoTxt.FontWeight = "Bold"
+            $instInfoTxt.Foreground = Brush("#10B981")
+            $instInfoTxt.Margin = New-Object System.Windows.Thickness(0, 4, 0, 2)
+            [void]$verInner.Children.Add($instInfoTxt)
+
+            $warnTxt = New-Object System.Windows.Controls.TextBlock
+            $warnTxt.Text = "⚠️ Bilgi: Farklı bir sürüm veya kaynak yüklemek için, çakışmayı önlemek adına önce mevcut uygulamayı kaldırmalısınız."
+            $warnTxt.FontSize = 10.5; $warnTxt.Foreground = Brush("#F59E0B"); $warnTxt.TextWrapping = "Wrap"
+            [void]$verInner.Children.Add($warnTxt)
+        } elseif ($confInfo.HasConflict) {
+            $confTxt = New-Object System.Windows.Controls.TextBlock
+            $confTxt.Text = "⚠️ Bu yazılımın başka bir sürümü ('$($confInfo.ConflictName)') bilgisayarınızda zaten yüklüdür! Bu sürümü kurmak için önce '$($confInfo.ConflictName)' uygulamasını kaldırmalısınız."
+            $confTxt.FontSize = 11; $confTxt.FontWeight = "Bold"
+            $confTxt.Foreground = Brush("#EF4444"); $confTxt.TextWrapping = "Wrap"
+            [void]$verInner.Children.Add($confTxt)
+        } else {
+            $cleanTxt = New-Object System.Windows.Controls.TextBlock
+            $cleanTxt.Text = "○ Bu uygulamanın herhangi bir sürümü şu anda sisteminizde yüklü değildir. Güvenle kurabilirsiniz."
+            $cleanTxt.FontSize = 11; $cleanTxt.Foreground = Brush("#38BDF8")
+            [void]$verInner.Children.Add($cleanTxt)
+        }
+
+        $verBorder.Child = $verInner
+        [void]$isp.Children.Add($verBorder)
+
         # PAKET VE SISTEM BILGILERI Karti
         $metaBorder = New-Object System.Windows.Controls.Border
         $metaBorder.Background = if ($global:isDark) { Brush("#101722") } else { Brush("#F1F5F9") }
@@ -4262,60 +4425,101 @@ function New-CompactAppCard($app) {
         $actualStoreId = if ($tApp.StoreId) { $tApp.StoreId } elseif ($tIsStore) { $tStoreId } else { $null }
         $hasNormalOption = $tApp.NormalId -or $tApp.DownloadUrl -or (-not $tIsStore)
 
-        # 1. Normal / Web Indirme Butonu
-        if ($hasNormalOption) {
-            $iNormalBtn = New-Object System.Windows.Controls.Button
-            $iNormalBtn.Content = "Normal / Web Kaynagindan Kur"
-            $iNormalBtn.Height = 34
-            $iNormalBtn.FontSize = 11
-            $iNormalBtn.FontWeight = "Bold"
-            $iNormalBtn.Background = Brush("#0F3A5D")
-            $iNormalBtn.Foreground = Brush("#38BDF8")
-            $iNormalBtn.BorderThickness = New-Object System.Windows.Thickness(0)
-            $iNormalBtn.Cursor = "Hand"
-            $iNormalBtn.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
-            $iNormalBtn.Template = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate>')
-            
-            $iNormalBtn.Tag = @{ WinRef = $infoWin; App = $tApp }
-            $iNormalBtn.Add_Click({
-                param($nb, $ne)
-                $data = $nb.Tag
-                $curApp = $data.App
-                if ($curApp.DownloadUrl) {
-                    Start-Process $curApp.DownloadUrl
-                } elseif ($curApp.NormalId) {
-                    Start-Process -FilePath $global:wingetExe -ArgumentList "install --id $($curApp.NormalId) --accept-source-agreements --accept-package-agreements"
-                } elseif ($curApp.Id) {
-                    Start-Process -FilePath $global:wingetExe -ArgumentList "install --id $($curApp.Id) --accept-source-agreements --accept-package-agreements"
-                }
-                $data.WinRef.Close()
-            })
-            [void]$footerSp.Children.Add($iNormalBtn)
-        }
-
-        # 2. Microsoft Store Butonu
-        if ($actualStoreId) {
-            $iStoreBtn = New-Object System.Windows.Controls.Button
-            $iStoreBtn.Content = "Microsoft Store'dan Ac ve Indir"
-            $iStoreBtn.Height = 34
-            $iStoreBtn.FontSize = 11
-            $iStoreBtn.FontWeight = "Bold"
-            $iStoreBtn.Background = Brush("#312E81")
-            $iStoreBtn.Foreground = Brush("#FFFFFF")
-            $iStoreBtn.BorderThickness = New-Object System.Windows.Thickness(0)
-            $iStoreBtn.Cursor = "Hand"
-            $iStoreBtn.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
-            $iStoreBtn.Template = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate>')
-            
-            $iStoreBtn.Tag = @{ WinRef = $infoWin; SID = $actualStoreId }
-            $iStoreBtn.Add_Click({
-                param($sb, $se)
-                $d = $sb.Tag
-                try { Start-Process "ms-windows-store://pdp/?ProductId=$($d.SID)" }
-                catch { Start-Process "https://www.microsoft.com/store/apps/$($d.SID)" }
+        # EGER YUKLU ISE VEYA CAKISAN SURUM VARSA: YUKLE BUTONU GOSTERILMEZ!
+        # "adam 1 ini indirdisye o uygulamayı silmeden yükle butonu olmasın."
+        if ($tIsInst) {
+            $iUninstBtn = New-Object System.Windows.Controls.Button
+            $iUninstBtn.Content = "🗑️  Bilgisayardan Kaldır"
+            $iUninstBtn.Height = 34
+            $iUninstBtn.FontSize = 11
+            $iUninstBtn.FontWeight = "Bold"
+            $iUninstBtn.Background = Brush("#DC2626")
+            $iUninstBtn.Foreground = Brush("#FFFFFF")
+            $iUninstBtn.BorderThickness = New-Object System.Windows.Thickness(0)
+            $iUninstBtn.Cursor = "Hand"
+            $iUninstBtn.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+            $iUninstBtn.Template = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate>')
+            $iUninstBtn.Tag = @{ WinRef = $infoWin; App = $tApp }
+            $iUninstBtn.Add_Click({
+                param($ub, $ue)
+                $d = $ub.Tag
                 $d.WinRef.Close()
+                $targetCard = $global:allCards | Where-Object { $_.Tag.App.Name -eq $d.App.Name } | Select-Object -First 1
+                if ($targetCard) {
+                    $global:selectedQueue.Clear()
+                    foreach ($c in $global:allCards) {
+                        if ($c.Tag.IsSelected) {
+                            $c.Tag.IsSelected = $false
+                            $c.Tag.CheckMark.Visibility = [System.Windows.Visibility]::Collapsed
+                        }
+                    }
+                    Toggle-CardSelection $targetCard
+                    Invoke-BatchOperation "Kaldir"
+                }
             })
-            [void]$footerSp.Children.Add($iStoreBtn)
+            [void]$footerSp.Children.Add($iUninstBtn)
+        } elseif ($confInfo.HasConflict) {
+            $confNotice = New-Object System.Windows.Controls.TextBlock
+            $confNotice.Text = "Yüklü olan '$($confInfo.ConflictName)' kaldırılmadan yeni sürüm yüklenemez."
+            $confNotice.FontSize = 11; $confNotice.FontWeight = "Bold"; $confNotice.Foreground = Brush("#EF4444")
+            $confNotice.HorizontalAlignment = "Center"; $confNotice.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+            [void]$footerSp.Children.Add($confNotice)
+        } else {
+            # 1. Normal / Web Indirme Butonu
+            if ($hasNormalOption) {
+                $iNormalBtn = New-Object System.Windows.Controls.Button
+                $iNormalBtn.Content = "Normal / Web Kaynagindan Kur"
+                $iNormalBtn.Height = 34
+                $iNormalBtn.FontSize = 11
+                $iNormalBtn.FontWeight = "Bold"
+                $iNormalBtn.Background = Brush("#0F3A5D")
+                $iNormalBtn.Foreground = Brush("#38BDF8")
+                $iNormalBtn.BorderThickness = New-Object System.Windows.Thickness(0)
+                $iNormalBtn.Cursor = "Hand"
+                $iNormalBtn.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+                $iNormalBtn.Template = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate>')
+                
+                $iNormalBtn.Tag = @{ WinRef = $infoWin; App = $tApp }
+                $iNormalBtn.Add_Click({
+                    param($nb, $ne)
+                    $data = $nb.Tag
+                    $curApp = $data.App
+                    if ($curApp.DownloadUrl) {
+                        Start-Process $curApp.DownloadUrl
+                    } elseif ($curApp.NormalId) {
+                        Start-Process -FilePath $global:wingetExe -ArgumentList "install --id $($curApp.NormalId) --accept-source-agreements --accept-package-agreements"
+                    } elseif ($curApp.Id) {
+                        Start-Process -FilePath $global:wingetExe -ArgumentList "install --id $($curApp.Id) --accept-source-agreements --accept-package-agreements"
+                    }
+                    $data.WinRef.Close()
+                })
+                [void]$footerSp.Children.Add($iNormalBtn)
+            }
+
+            # 2. Microsoft Store Butonu
+            if ($actualStoreId) {
+                $iStoreBtn = New-Object System.Windows.Controls.Button
+                $iStoreBtn.Content = "Microsoft Store'dan Ac ve Indir"
+                $iStoreBtn.Height = 34
+                $iStoreBtn.FontSize = 11
+                $iStoreBtn.FontWeight = "Bold"
+                $iStoreBtn.Background = Brush("#312E81")
+                $iStoreBtn.Foreground = Brush("#FFFFFF")
+                $iStoreBtn.BorderThickness = New-Object System.Windows.Thickness(0)
+                $iStoreBtn.Cursor = "Hand"
+                $iStoreBtn.Margin = New-Object System.Windows.Thickness(0, 0, 0, 6)
+                $iStoreBtn.Template = [System.Windows.Markup.XamlReader]::Parse('<ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="16"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate>')
+                
+                $iStoreBtn.Tag = @{ WinRef = $infoWin; SID = $actualStoreId }
+                $iStoreBtn.Add_Click({
+                    param($sb, $se)
+                    $d = $sb.Tag
+                    try { Start-Process "ms-windows-store://pdp/?ProductId=$($d.SID)" }
+                    catch { Start-Process "https://www.microsoft.com/store/apps/$($d.SID)" }
+                    $d.WinRef.Close()
+                })
+                [void]$footerSp.Children.Add($iStoreBtn)
+            }
         }
 
         # Hover efektleri: Normal ve Store butonlari
@@ -5826,10 +6030,11 @@ function Show-DefenderSecurityModal {
     $btnCancelScan.Child = $btnCancelTxt
 
     $btnCancelScan.Add_MouseLeftButtonUp({
-        if ($global:activeDefenderProc) {
-            try { $global:activeDefenderProc.Kill() } catch {}
+        if ($global:activeDefenderProc -and -not $global:activeDefenderProc.HasExited) {
+            try { Stop-Process -Id $global:activeDefenderProc.Id -Force -ErrorAction SilentlyContinue } catch {}
         }
         $timer.Stop()
+        $global:activeDefenderProc = $null
         $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
         $pBar.Visibility = [System.Windows.Visibility]::Collapsed
         $sCol1Val.Text = "● Tarama Durduruldu"; $sCol1Val.Foreground = Brush("#EF4444")
@@ -5872,6 +6077,10 @@ function Show-DefenderSecurityModal {
         $mpCmdPath = (Get-ChildItem "C:\ProgramData\Microsoft\Windows Defender\Platform" -Filter "MpCmdRun.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
     }
 
+    $global:activeDefenderProc = $null
+    $global:activeDefenderAction = ""
+    $global:defOutFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "smp_defender_out.txt")
+
     $timer = New-Object System.Windows.Threading.DispatcherTimer
     $timer.Interval = [TimeSpan]::FromSeconds(1)
     $elapsedSec = 0
@@ -5880,6 +6089,45 @@ function Show-DefenderSecurityModal {
         $m = [Math]::Floor($elapsedSec / 60)
         $s = $elapsedSec % 60
         $sCol3Val.Text = "{0:D2}:{1:D2}" -f [int]$m, [int]$s
+
+        if ($global:activeDefenderProc) {
+            if ($global:activeDefenderProc.HasExited) {
+                $timer.Stop()
+                $proc = $global:activeDefenderProc
+                $global:activeDefenderProc = $null
+                if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed }
+                $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
+                $pBar.Visibility = [System.Windows.Visibility]::Collapsed
+
+                $errCode = $proc.ExitCode
+                $outText = ""
+                try {
+                    if (Test-Path $global:defOutFile) {
+                        $outText = [System.IO.File]::ReadAllText($global:defOutFile, [System.Text.Encoding]::UTF8)
+                        Remove-Item $global:defOutFile -Force -ErrorAction SilentlyContinue
+                    }
+                } catch {}
+
+                $cleanOut = "$outText".Trim()
+                if ($cleanOut) {
+                    $txtLog.Text += "`n$cleanOut`n"
+                }
+
+                if ($errCode -eq 0) {
+                    $sCol1Val.Text = "● Koruma Aktif (Temiz)"; $sCol1Val.Foreground = Brush("#10B981")
+                    $sCol2Val.Text = "0 Tehdit"; $sCol2Val.Foreground = Brush("#10B981")
+                    $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($global:activeDefenderAction) başarıyla tamamlandı. Tehdit tespit edilmedi.`n"
+                } elseif ($errCode -eq 2) {
+                    $sCol1Val.Text = "● Tehdit Tespit Edildi!"; $sCol1Val.Foreground = Brush("#EF4444")
+                    $sCol2Val.Text = "⚠️ Tehdit Var!"; $sCol2Val.Foreground = Brush("#EF4444")
+                    $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] DİKKAT: Sistemde güvenlik tehdidi tespit edildi!`n"
+                } else {
+                    $sCol1Val.Text = "● Tamamlandı"; $sCol1Val.Foreground = Brush("#38BDF8")
+                    $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($global:activeDefenderAction) tamamlandı (Kod: $errCode).`n"
+                }
+                $txtLog.ScrollToEnd()
+            }
+        }
     })
 
     $RunSilentDefender = {
@@ -5892,125 +6140,41 @@ function Show-DefenderSecurityModal {
 
         $elapsedSec = 0
         $sCol3Val.Text = "00:00"
-        $timer.Start()
-
-        $activeMpPath = $mpCmdPath
-        $workerArg = @{
-            MpPath = $activeMpPath
-            ScanArg = $scanArg
-            Action = $actionName
-        }
-
-        $global:activeDefenderProc = $null
-        $global:activeDefenderWorker = $null
+        $global:activeDefenderAction = $actionName
         if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Visible }
 
-        $bgWorker = New-Object System.ComponentModel.BackgroundWorker
-        $global:activeDefenderWorker = $bgWorker
+        try {
+            if (Test-Path $global:defOutFile) { Remove-Item $global:defOutFile -Force -ErrorAction SilentlyContinue }
 
-        $bgWorker.add_DoWork({
-            param($s, $e)
-            $wArg = $e.Argument
-            $exe = $wArg.MpPath
-            $arg = $wArg.ScanArg
-            $action = $wArg.Action
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.CreateNoWindow = $true
+            $psi.UseShellExecute = $false
+            $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 
-            $outText = ""
-            $errCode = 0
-
-            # 1. Oncelik: MpCmdRun.exe
-            if ($exe -and (Test-Path $exe)) {
-                try {
-                    $psi = New-Object System.Diagnostics.ProcessStartInfo
-                    $psi.FileName = $exe
-                    $psi.Arguments = $arg
-                    $psi.UseShellExecute = $false
-                    $psi.RedirectStandardOutput = $true
-                    $psi.RedirectStandardError = $true
-                    $psi.CreateNoWindow = $true
-                    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-
-                    $proc = [System.Diagnostics.Process]::Start($psi)
-                    $global:activeDefenderProc = $proc
-                    $outTask = $proc.StandardOutput.ReadToEndAsync()
-                    $errTask = $proc.StandardError.ReadToEndAsync()
-                    $proc.WaitForExit()
-                    $errCode = $proc.ExitCode
-                    $outText = ""
-                    try { if ($outTask.IsCompleted -or $outTask.Wait(6000)) { $outText = $outTask.Result } } catch {}
-                    $errText = ""
-                    try { if ($errTask.IsCompleted -or $errTask.Wait(6000)) { $errText = $errTask.Result } } catch {}
-                    if ($errText) { $outText += "`n" + $errText }
-                } catch {
-                    $outText = "MpCmdRun hatasi: " + $_.Exception.Message
-                    Write-AppErrorLog "Defender.MpCmdRun" $_.Exception
-                    $errCode = -1
-                }
+            if ($mpCmdPath -and (Test-Path $mpCmdPath)) {
+                $psi.FileName = "cmd.exe"
+                $psi.Arguments = "/c `"`"$mpCmdPath`" $scanArg > `"$global:defOutFile`" 2>&1`""
             } else {
-                # 2. Alternatif: PowerShell Defender Modulu
-                try {
-                    if ($arg -match 'ScanType 1') {
-                        Start-MpScan -ScanType QuickScan -ErrorAction Stop
-                        $outText = "Hızlı tarama tamamlandı."
-                    } elseif ($arg -match 'ScanType 2') {
-                        Start-MpScan -ScanType FullScan -ErrorAction Stop
-                        $outText = "Tam tarama tamamlandı."
-                    } elseif ($arg -match 'SignatureUpdate') {
-                        Update-MpSignature -ErrorAction Stop
-                        $outText = "İmza tanımları güncellendi."
-                    }
-                    $errCode = 0
-                } catch {
-                    $outText = "Defender komut hatası: " + $_.Exception.Message
-                    Write-AppErrorLog "Defender.Start-MpScan" $_.Exception
-                    $errCode = 1
+                $psInner = if ($scanArg -match 'ScanType 1') {
+                    "Start-MpScan -ScanType QuickScan; Write-Output 'Hızlı tarama tamamlandı.'"
+                } elseif ($scanArg -match 'ScanType 2') {
+                    "Start-MpScan -ScanType FullScan; Write-Output 'Tam tarama tamamlandı.'"
+                } else {
+                    "Update-MpSignature; Write-Output 'İmza tanımları güncellendi.'"
                 }
+                $psi.FileName = "powershell.exe"
+                $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command `"$psInner`" > `"$global:defOutFile`" 2>&1"
             }
 
-            $e.Result = @{
-                ExitCode = $errCode
-                Output = $outText
-                Action = $action
-            }
-        })
-
-        $bgWorker.add_RunWorkerCompleted({
-            param($s, $e)
-            $timer.Stop()
-            $global:activeDefenderProc = $null
-            if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed }
+            $global:activeDefenderProc = [System.Diagnostics.Process]::Start($psi)
+            $timer.Start()
+        } catch {
+            Write-AppErrorLog "Defender.RunSilentDefender" $_.Exception
             $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
             $pBar.Visibility = [System.Windows.Visibility]::Collapsed
-
-            if ($e.Error) {
-                Write-AppErrorLog "Defender.RunWorkerCompleted" $e.Error
-                $sCol1Val.Text = "● Hata Oluştu"; $sCol1Val.Foreground = Brush("#EF4444")
-                $txtLog.Text += "`n[$([DateTime]::Now.ToString('HH:mm:ss'))] İşlem hatası: $($e.Error.Message)`n"
-                return
-            }
-
-            $res = $e.Result
-            $fullOut = "$($res.Output)".Trim()
-            if ($fullOut) {
-                $txtLog.Text += "`n$fullOut`n"
-            }
-
-            if ($res.ExitCode -eq 0) {
-                $sCol1Val.Text = "● Koruma Aktif (Temiz)"; $sCol1Val.Foreground = Brush("#10B981")
-                $sCol2Val.Text = "0 Tehdit"; $sCol2Val.Foreground = Brush("#10B981")
-                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($res.Action) başarıyla tamamlandı. Tehdit tespit edilmedi.`n"
-            } elseif ($res.ExitCode -eq 2) {
-                $sCol1Val.Text = "● Tehdit Tespit Edildi!"; $sCol1Val.Foreground = Brush("#EF4444")
-                $sCol2Val.Text = "⚠️ Tehdit Var!"; $sCol2Val.Foreground = Brush("#EF4444")
-                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] DİKKAT: Sistemde güvenlik tehdidi tespit edildi!`n"
-            } else {
-                $sCol1Val.Text = "● Tamamlandı"; $sCol1Val.Foreground = Brush("#38BDF8")
-                $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($res.Action) tamamlandı (Kod: $($res.ExitCode)).`n"
-            }
-            $txtLog.ScrollToEnd()
-        })
-
-        $bgWorker.RunWorkerAsync($workerArg)
+            $sCol1Val.Text = "● Hata Oluştu"; $sCol1Val.Foreground = Brush("#EF4444")
+            $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] İşlem başlatılamadı: $($_.Exception.Message)`n"
+        }
     }
 
     $cardQuick.Add_MouseLeftButtonUp({ & $RunSilentDefender "-Scan -ScanType 1" "Hızlı Tarama" })
