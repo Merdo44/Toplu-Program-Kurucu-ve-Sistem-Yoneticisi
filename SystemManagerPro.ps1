@@ -5863,6 +5863,47 @@ function Invoke-BatchOperation([string]$operation) {
 
             if ($isSuccess) {
                 $successCount++
+
+                # Otomatik Kısayol Doğrulama ve Oluşturma (Ventoy ve taşınabilir zip paketleri için)
+                if ($operation -eq "Kur") {
+                    try {
+                        $programsPath = [Environment]::GetFolderPath('Programs')
+                        $desktopPath = [Environment]::GetFolderPath('Desktop')
+                        $hasStartLnk = (Get-ChildItem -Path $programsPath -Filter "*$($app.Name)*.lnk" -Recurse -ErrorAction SilentlyContinue).Count -gt 0
+                        $hasDeskLnk  = (Get-ChildItem -Path $desktopPath -Filter "*$($app.Name)*.lnk" -ErrorAction SilentlyContinue).Count -gt 0
+
+                        if (-not $hasStartLnk) {
+                            $candidateExes = @()
+                            $pkgDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
+                            if (Test-Path $pkgDir) {
+                                $foundDirs = Get-ChildItem -Path $pkgDir -Filter "*$($app.Id)*" -Directory -ErrorAction SilentlyContinue
+                                foreach ($fd in $foundDirs) {
+                                    $candidateExes += Get-ChildItem -Path $fd.FullName -Filter "*.exe" -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch 'uninstall|helper|setup' }
+                                }
+                            }
+                            if ($candidateExes.Count -gt 0) {
+                                $targetExe = ($candidateExes | Sort-Object Length -Descending | Select-Object -First 1).FullName
+                                $wsh = New-Object -ComObject WScript.Shell
+                                $startLnk = Join-Path $programsPath "$($app.Name).lnk"
+                                $sc = $wsh.CreateShortcut($startLnk)
+                                $sc.TargetPath = $targetExe
+                                $sc.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
+                                $sc.Description = "$($app.Name) Uygulaması"
+                                $sc.Save()
+
+                                if (-not $hasDeskLnk) {
+                                    $deskLnk = Join-Path $desktopPath "$($app.Name).lnk"
+                                    $scD = $wsh.CreateShortcut($deskLnk)
+                                    $scD.TargetPath = $targetExe
+                                    $scD.WorkingDirectory = [System.IO.Path]::GetDirectoryName($targetExe)
+                                    $scD.Description = "$($app.Name) Uygulaması"
+                                    $scD.Save()
+                                }
+                            }
+                        }
+                    } catch {}
+                }
+
                 if ($global:isDark) {
                     $card.Background = Brush("#064E3B")
                     $card.BorderBrush = Brush("#34D399")
