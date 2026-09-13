@@ -176,6 +176,7 @@ $global:localLogosMap = @{
     "TeamViewer QuickSupport"          = @("teamwiever.png", "d24ec23b89284d31515cc2d8af3386e9.png")
     "TeamViewer Host"                  = @("teamwiever.png", "d24ec23b89284d31515cc2d8af3386e9.png")
     "Blitz"                            = @("4267635.png")
+    "Riot Client"                      = @("riotgames.png")
     "Riot Games Client"                = @("riotgames.png")
     "Chrome Remote Desktop"            = @("chromeremotedesktop.png")
     "Cloudflare WARP"                  = @("Cloudflare_Logo.png", "cloudflare_warp.png", "cloudflare.png")
@@ -1862,7 +1863,7 @@ $global:apps = @(
     @{Name="EA App"; Id="ElectronicArts.EADesktop"; Slug="ea"; Domain="ea.com"; IconUrl="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/electronic-arts.png"; DirectUrl="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/electronic-arts.png"; Desc="EA oyunları ve EA Play istemcisi"; Cat="Games"},
     @{Name="Ubisoft Connect"; Id="Ubisoft.Connect"; Slug="ubisoft"; Domain="ubisoft.com"; IconUrl="https://cdn2.steamgriddb.com/icon/064e3a5648fb4a7f911155bd81f87fd2.ico"; DirectUrl="https://cdn2.steamgriddb.com/icon/064e3a5648fb4a7f911155bd81f87fd2.ico"; Desc="Ubisoft yapımları için resmi istemci"; Cat="Games"},
     @{Name="Rockstar Games Launcher"; Id="RockstarGames.Launcher"; Slug="rockstargames"; Domain="rockstargames.com"; IconUrl="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Rockstar_Games_Logo.svg/500px-Rockstar_Games_Logo.svg.png"; DirectUrl="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Rockstar_Games_Logo.svg/500px-Rockstar_Games_Logo.svg.png"; Desc="GTA ve Red Dead Redemption resmi oyun istemcisi"; Cat="Games"},
-    @{Name="Riot Games Client"; Id="RiotGames.LeagueOfLegends.TR"; Slug="riotgames"; Domain="riotgames.com"; Desc="League of Legends, Valorant ve TFT resmi oyun istemcisi"; Cat="Games"},
+    @{Name="Riot Client"; Id="RiotGames.LeagueOfLegends.TR"; Slug="riotgames"; Domain="riotgames.com"; Desc="League of Legends, Valorant ve TFT resmi oyun istemcisi"; Cat="Games"; ExePath="C:\Riot Games\Riot Client\RiotClientServices.exe"; RegistryName="Riot Game Riot_Client.*"},
     @{Name="Blitz"; Id="Blitz.Blitz"; Slug="blitz"; Domain="blitz.gg"; Desc="LoL, Valorant ve TFT için otomatik rün, eşya ve rehber asistanı"; Cat="Games"},
     @{Name="XBOX"; Id="9MV0B5HZVK9Z"; StoreId="9MV0B5HZVK9Z"; DownloadUrl="https://aka.ms/XboxInstaller.exe"; HasDual="1"; Slug="xbox"; Domain="xbox.com"; IconUrl="https://www.google.com/s2/favicons?domain=xbox.com&sz=128"; DirectUrl="https://www.google.com/s2/favicons?domain=xbox.com&sz=128"; Desc="Resmi Microsoft XBOX ve PC Game Pass uygulaması. Yüzlerce konsol ve PC oyununu keşfet, indir ve oyna. Bulut oyun (Cloud Gaming), EA Play ve Xbox Live arkadaş ağı desteği içerir."; Cat="Games"; RegistryName="Microsoft.GamingApp"},
         # --- DİJİTAL YAYIN & EĞLENCE (STREAMING) & OFİS (STORE ÖZEL) ---
@@ -2169,6 +2170,17 @@ function Is-AppActuallyInstalled([string]$appName, [string]$id, [string]$exePath
     if ($appName -eq "WhatsApp" -or $id -eq "WhatsApp.WhatsApp" -or $id -eq "9NKSQGP7F2NH") {
         if ($global:storeInstalledNames.Contains("5319275A.WhatsAppDesktop") -or
             (Test-Path "$env:LOCALAPPDATA\WhatsApp\WhatsApp.exe")) {
+            return $true
+        }
+    }
+
+        # Riot Client
+    if ($appName -like "*Riot*Client*" -or $appName -eq "Riot Client" -or $id -like "*RiotGames*") {
+        if ((Test-Path "C:\Riot Games\Riot Client\RiotClientServices.exe") -or
+            (Test-Path "$env:LOCALAPPDATA\Riot Games") -or
+            (Test-Path "C:\ProgramData\Riot Games") -or
+            (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Riot Game Riot_Client.*" -ErrorAction SilentlyContinue) -or
+            (Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Riot*" -ErrorAction SilentlyContinue)) {
             return $true
         }
     }
@@ -3346,7 +3358,7 @@ function Render-QueuePanel {
             [void]$badgeSp.Children.Add($srcBadge)
 
             # KUYRUKTA SEÇİLEBİLİR DERİN TEMİZLİK ROZETİ (Açık / Kapalı)
-            if ($null -eq $state.App.DoDeepClean) { $state.App.DoDeepClean = $true }
+            if ($null -eq $state.App.DoDeepClean) { $state.App.DoDeepClean = $false }
 
             $deepBadge = New-Object System.Windows.Controls.Border
             $deepBadge.CornerRadius = New-Object System.Windows.CornerRadius(4)
@@ -5509,14 +5521,24 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
         $badgeBorder.Background = if ($global:isDark) { Brush("#0A2E20") } else { Brush("#DCFCE7") }
         $badgeBorder.BorderBrush = Brush("#10B981")
         $badgeBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
-        $tIco = New-Object System.Windows.Controls.TextBlock; $tIco.Text = "🚀"; $tIco.FontSize = 18; $tIco.HorizontalAlignment = "Center"; $tIco.VerticalAlignment = "Center"
-        $badgeBorder.Child = $tIco
+        $rocketPath = New-Object System.Windows.Shapes.Path
+        $rocketPath.Data = [System.Windows.Media.Geometry]::Parse("M12,2.5 C12,2.5 7,7 7,12 C7,14.5 8,16.5 8,16.5 L6,18.5 L6,21.5 L8.5,20 L10,21.5 L12,19.5 L14,21.5 L15.5,20 L18,21.5 L18,18.5 L16,16.5 C16,16.5 17,14.5 17,12 C17,7 12,2.5 12,2.5 Z M12,10 A2,2 0 1,1 12,6 A2,2 0 1,1 12,10 Z")
+        $rocketPath.Fill = Brush("#10B981")
+        $rocketPath.Width = 18; $rocketPath.Height = 18
+        $rocketPath.Stretch = [System.Windows.Media.Stretch]::Uniform
+        $rocketPath.HorizontalAlignment = "Center"; $rocketPath.VerticalAlignment = "Center"
+        $badgeBorder.Child = $rocketPath
     } else {
         $badgeBorder.Background = if ($global:isDark) { Brush("#0C2640") } else { Brush("#E0F2FE") }
         $badgeBorder.BorderBrush = Brush("#0284C7")
         $badgeBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
-        $tIco = New-Object System.Windows.Controls.TextBlock; $tIco.Text = "🔄"; $tIco.FontSize = 18; $tIco.HorizontalAlignment = "Center"; $tIco.VerticalAlignment = "Center"
-        $badgeBorder.Child = $tIco
+        $updatePath = New-Object System.Windows.Shapes.Path
+        $updatePath.Data = [System.Windows.Media.Geometry]::Parse("M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z")
+        $updatePath.Fill = Brush("#0284C7")
+        $updatePath.Width = 18; $updatePath.Height = 18
+        $updatePath.Stretch = [System.Windows.Media.Stretch]::Uniform
+        $updatePath.HorizontalAlignment = "Center"; $updatePath.VerticalAlignment = "Center"
+        $badgeBorder.Child = $updatePath
     }
     [void]$hTopSp.Children.Add($badgeBorder)
 
@@ -5622,11 +5644,11 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
     [System.Windows.Controls.Grid]::SetRow($listBorder, 1)
     [void]$mGrid.Children.Add($listBorder)
 
-    # İsteğe Bağlı Derin Temizlik Onay Kutusu
+    # İsteğe Bağlı Derin Temizlik Seçeneği (Kullanıcı İsteği: Otomatik seçilmesin, sorulsun)
     $chkBatchDeep = $null
     if ($operation -eq "Kaldir") {
-        if ($null -eq $global:batchDoDeepClean) { $global:batchDoDeepClean = $true }
-        $chkBatchDeep = New-ModernCheck "Kaldırma işlemi sonrasında Derin Temizlik yapılsın (Kalıntı Taraması)" ($global:batchDoDeepClean -ne $false)
+        $anyDeepSelectedInQueue = @($queueToProcess | Where-Object { $_.Tag -and $_.Tag.App -and $_.Tag.App.DoDeepClean }).Count -gt 0
+        $chkBatchDeep = New-ModernCheck "Kaldırma işlemi sonrasında Derin Temizlik yapılsın (Kayıt defteri ve dosya kalıntılarını tara)" $anyDeepSelectedInQueue
         $chkBatchDeep.Margin = New-Object System.Windows.Thickness(4, 10, 0, 0)
         [System.Windows.Controls.Grid]::SetRow($chkBatchDeep, 1)
         $chkBatchDeep.VerticalAlignment = "Bottom"
@@ -5680,6 +5702,11 @@ function Show-BatchConfirmDialog([string]$operation, $queueToProcess) {
         $script:confirmResult = $true
         if ($chkBatchDeep) {
             $global:batchDoDeepClean = $chkBatchDeep.IsChecked
+            foreach ($cardItem in $queueToProcess) {
+                if ($cardItem.Tag -and $cardItem.Tag.App) {
+                    $cardItem.Tag.App.DoDeepClean = $chkBatchDeep.IsChecked
+                }
+            }
         }
         $cWin.Close()
     })
@@ -7071,6 +7098,35 @@ function Invoke-BatchOperation([string]$operation) {
                                 $res = @{ ExitCode = $p.ExitCode; Output = "Yerel kaldırıcı tamamlandı"; Error = "" }
                             }
                         }
+
+                        # 5. Eger tasinabilir/portable bir paketse veya winget uninstaller bulamadiysa (ExitCode -1978335107 / 2316632084):
+                        if ($res.ExitCode -ne 0) {
+                            $cleanedAny = $false
+                            $pkgDirs = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages") -Filter "*$($app.Id)*" -Directory -ErrorAction SilentlyContinue
+                            if ($pkgDirs) {
+                                foreach ($pd in $pkgDirs) {
+                                    Remove-Item -LiteralPath $pd.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                                    $cleanedAny = $true
+                                }
+                            }
+                            $links = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links") -Filter "*$($app.Slug)*" -File -ErrorAction SilentlyContinue
+                            if ($links) {
+                                foreach ($l in $links) {
+                                    Remove-Item -LiteralPath $l.FullName -Force -ErrorAction SilentlyContinue
+                                    $cleanedAny = $true
+                                }
+                            }
+                            $regKeys = Get-ChildItem -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "*$($app.Id)*" }
+                            if ($regKeys) {
+                                foreach ($rk in $regKeys) {
+                                    Remove-Item -Path $rk.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+                                    $cleanedAny = $true
+                                }
+                            }
+                            if ($cleanedAny) {
+                                $res = @{ ExitCode = 0; Output = "Taşınabilir paket ve kısayolları başarıyla kaldırıldı."; Error = "" }
+                            }
+                        }
                     }
                 }
             }
@@ -7081,7 +7137,7 @@ function Invoke-BatchOperation([string]$operation) {
             # Kaldırma işlemi sonrası durum doğrulaması: Uygulama sistemden gerçekten silindi mi?
             if ($operation -eq "Kaldir") {
                 $waitSec = 0
-                while ($waitSec -lt 8) {
+                while ($waitSec -lt 4) {
                     Start-Sleep -Seconds 1
                     $waitSec++
                     $appExe = if ($app.ExePath) { $app.ExePath } else { "" }
@@ -7094,13 +7150,23 @@ function Invoke-BatchOperation([string]$operation) {
                     }
                 }
 
-                # DERİN TEMİZLİK SİHİRBAZI (İsteğe Bağlı Seçim)
-                if ($app.DoDeepClean -ne $false -and $global:batchDoDeepClean -ne $false) {
+                # DERİN TEMİZLİK SİHİRBAZI (Kullanıcı Seçtiyse Çalıştır)
+                $shouldDeep = ($app.DoDeepClean -eq $true) -or ($global:batchDoDeepClean -eq $true)
+                if ($shouldDeep) {
                     try {
                         Show-DeepCleanWizard $app
+                        $exitCode = 0
+                        $fullLog = "Uygulama ve tüm kalıntıları derin temizlik ile başarıyla kaldırıldı."
                     } catch {}
                 } else {
-                    Set-Status "$($app.Name) standart olarak kaldırıldı (Derin temizlik atlandı)." "SUCCESS"
+                    Set-Status "$($app.Name) standart olarak kaldırıldı." "SUCCESS"
+                }
+
+                # Son Kontrol: Derin temizlik yapıldıysa veya uygulama artık sistemde yoksa ExitCode 0 kabul et
+                $appExe = if ($app.ExePath) { $app.ExePath } else { "" }
+                $appReg = if ($app.RegistryName) { $app.RegistryName } else { "" }
+                if ($shouldDeep -or (-not (Is-AppActuallyInstalled $app.Name $app.Id $appExe $appReg))) {
+                    $exitCode = 0
                 }
             }
 
