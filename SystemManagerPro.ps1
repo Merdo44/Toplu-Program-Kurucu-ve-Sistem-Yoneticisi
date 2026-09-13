@@ -3348,16 +3348,18 @@ function Render-QueuePanel {
                 $srcTxt.Text = "🛍️ Microsoft Store"
                 $srcTxt.Foreground = if ($global:isDark) { Brush("#C084FC") } else { Brush("#7C3AED") }
             } elseif ($isDual -or $state.App.SelectedSource -eq "Normal") {
+                $archSuffix = if ($state.App.SelectedArch -eq "x64") { " • 64-Bit" } elseif ($state.App.SelectedArch -eq "x86") { " • 32-Bit" } else { "" }
                 $srcBadge.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
                 $srcBadge.BorderBrush = Brush("#0284C7")
                 $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-                $srcTxt.Text = "🌐 Standart (Web)"
+                $srcTxt.Text = "🌐 Standart$archSuffix"
                 $srcTxt.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0284C7") }
             } else {
+                $archSuffix = if ($state.App.SelectedArch -eq "x64") { " • 64-Bit" } elseif ($state.App.SelectedArch -eq "x86") { " • 32-Bit" } else { "" }
                 $srcBadge.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
                 $srcBadge.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
                 $srcBadge.BorderThickness = New-Object System.Windows.Thickness(1)
-                $srcTxt.Text = "⚡ WinGet Paket"
+                $srcTxt.Text = "⚡ WinGet$archSuffix"
                 $srcTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
             }
 
@@ -3527,6 +3529,295 @@ function Update-ActionButtonGuards {
         Set-Status "$count uygulama sırada ($canInstallCount kurulabilir, $canUninstallCount kaldırılabilir)." "OK"
     }
 }
+
+
+# --- SÜRÜM & MİMARİ SEÇİM DİYALOĞU (64-BIT ÖNERİLEN, 32-BIT, DİĞER SÜRÜMLER) ---
+function Show-VersionSelectDialog($app, $iconSource = $null) {
+    $script:tempSelArch = $null
+
+    $dlg = New-Object System.Windows.Window
+    $dlg.Title = "$($app.Name) - Sürüm ve Mimari Seçimi"
+    $dlg.Width = 520
+    $dlg.Height = 410
+    $dlg.WindowStartupLocation = "CenterScreen"
+    $dlg.ResizeMode = "NoResize"
+    $dlg.WindowStyle = "None"
+    $dlg.AllowsTransparency = $true
+    $dlg.Background = [System.Windows.Media.Brushes]::Transparent
+    $dlg.ShowInTaskbar = $false
+    $dlg.Topmost = $true
+    try { if ($window -and $window.IsVisible) { $dlg.Owner = $window } } catch {}
+
+    $mainBorder = New-Object System.Windows.Controls.Border
+    $mainBorder.CornerRadius = New-Object System.Windows.CornerRadius(14)
+    $mainBorder.Background = if ($global:isDark) { Brush("#0F172A") } else { Brush("#FFFFFF") }
+    $mainBorder.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $mainBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $mainBorder.Padding = New-Object System.Windows.Thickness(20, 18, 20, 16)
+
+    $mainGrid = New-Object System.Windows.Controls.Grid
+    $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
+    $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto
+    [void]$mainGrid.RowDefinitions.Add($r0); [void]$mainGrid.RowDefinitions.Add($r1); [void]$mainGrid.RowDefinitions.Add($r2)
+
+    # 1. Başlık & Logo Alanı
+    $headGrid = New-Object System.Windows.Controls.Grid
+    $hCol0 = New-Object System.Windows.Controls.ColumnDefinition; $hCol0.Width = [System.Windows.GridLength]::Auto
+    $hCol1 = New-Object System.Windows.Controls.ColumnDefinition; $hCol1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    [void]$headGrid.ColumnDefinitions.Add($hCol0); [void]$headGrid.ColumnDefinitions.Add($hCol1)
+
+    $iconBox = New-Object System.Windows.Controls.Border
+    $iconBox.Width = 40; $iconBox.Height = 40
+    $iconBox.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $iconBox.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F1F5F9") }
+    $iconBox.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
+    $iconBox.BorderThickness = New-Object System.Windows.Thickness(1)
+    $iconBox.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+
+    $resolvedIcon = if ($iconSource) { $iconSource } else {
+        $dUrl = if ($app.DirectUrl) { $app.DirectUrl } else { $app.IconUrl }
+        Get-WpfIconSource $app.Slug $app.Domain $dUrl $app.Name
+    }
+    if ($resolvedIcon) {
+        $icImg = New-Object System.Windows.Controls.Image
+        $icImg.Width = 28; $icImg.Height = 28
+        $icImg.Source = $resolvedIcon
+        [System.Windows.Media.RenderOptions]::SetBitmapScalingMode($icImg, [System.Windows.Media.BitmapScalingMode]::HighQuality)
+        $iconBox.Child = $icImg
+    } else {
+        $icFallback = New-Object System.Windows.Controls.TextBlock
+        $icFallback.Text = if ($app.Name.Length -ge 1) { $app.Name.Substring(0,1).ToUpper() } else { "📦" }
+        $icFallback.FontSize = 16; $icFallback.FontWeight = "Bold"
+        $icFallback.HorizontalAlignment = "Center"; $icFallback.VerticalAlignment = "Center"
+        $icFallback.Foreground = Brush("#38BDF8")
+        $iconBox.Child = $icFallback
+    }
+    [System.Windows.Controls.Grid]::SetColumn($iconBox, 0)
+    [void]$headGrid.Children.Add($iconBox)
+
+    $tBox = New-Object System.Windows.Controls.StackPanel
+    $tBox.VerticalAlignment = "Center"
+    $tTitle = New-Object System.Windows.Controls.TextBlock
+    $tTitle.Text = "$($app.Name) — Sürüm & Mimari Seçimi"
+    $tTitle.FontWeight = "Bold"; $tTitle.FontSize = 13.5
+    $tTitle.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
+    [void]$tBox.Children.Add($tTitle)
+
+    $tSub = New-Object System.Windows.Controls.TextBlock
+    $tSub.Text = "Bilgisayarınıza yüklemek istediğiniz sürüm veya mimariyi seçin:"
+    $tSub.FontSize = 10.5
+    $tSub.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $tSub.Margin = New-Object System.Windows.Thickness(0, 2, 0, 0)
+    [void]$tBox.Children.Add($tSub)
+    [System.Windows.Controls.Grid]::SetColumn($tBox, 1)
+    [void]$headGrid.Children.Add($tBox)
+
+    [System.Windows.Controls.Grid]::SetRow($headGrid, 0)
+    [void]$mainGrid.Children.Add($headGrid)
+
+    # 2. Seçenek Kartları (Kullanıcı İsteği: En başta 64-bit Önerilen, altında 32-bit, sonra diğer sürümler)
+    $optSp = New-Object System.Windows.Controls.StackPanel
+    $optSp.Margin = New-Object System.Windows.Thickness(0, 14, 0, 10)
+    [System.Windows.Controls.Grid]::SetRow($optSp, 1)
+    [void]$mainGrid.Children.Add($optSp)
+
+    # SEÇENEK 1: 64-BIT (x64) — EN ÜSTTE & ÖNERİLEN
+    $btn64 = New-Object System.Windows.Controls.Border
+    $btn64.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $btn64.Background = if ($global:isDark) { Brush("#064E3B") } else { Brush("#ECFDF5") }
+    $btn64.BorderBrush = if ($global:isDark) { Brush("#059669") } else { Brush("#10B981") }
+    $btn64.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $btn64.Padding = New-Object System.Windows.Thickness(14, 10, 14, 10)
+    $btn64.Margin = New-Object System.Windows.Thickness(0, 0, 0, 9)
+    $btn64.Cursor = "Hand"
+
+    $grid64 = New-Object System.Windows.Controls.Grid
+    $g64C0 = New-Object System.Windows.Controls.ColumnDefinition; $g64C0.Width = [System.Windows.GridLength]::Auto
+    $g64C1 = New-Object System.Windows.Controls.ColumnDefinition; $g64C1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $g64C2 = New-Object System.Windows.Controls.ColumnDefinition; $g64C2.Width = [System.Windows.GridLength]::Auto
+    [void]$grid64.ColumnDefinitions.Add($g64C0); [void]$grid64.ColumnDefinitions.Add($g64C1); [void]$grid64.ColumnDefinitions.Add($g64C2)
+
+    $ico64 = New-Object System.Windows.Controls.TextBlock
+    $ico64.Text = "⚡"
+    $ico64.FontSize = 20
+    $ico64.VerticalAlignment = "Center"
+    $ico64.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+    [System.Windows.Controls.Grid]::SetColumn($ico64, 0)
+    [void]$grid64.Children.Add($ico64)
+
+    $txt64Sp = New-Object System.Windows.Controls.StackPanel
+    $t64 = New-Object System.Windows.Controls.TextBlock
+    $t64.Text = "64-Bit (x64)"
+    $t64.FontWeight = "Bold"; $t64.FontSize = 12.5
+    $t64.Foreground = if ($global:isDark) { Brush("#34D399") } else { Brush("#065F46") }
+    [void]$txt64Sp.Children.Add($t64)
+
+    $d64 = New-Object System.Windows.Controls.TextBlock
+    $d64.Text = "Modern 64-bit Windows için en yüksek performans, güvenlik ve bellek desteği."
+    $d64.FontSize = 10
+    $d64.Foreground = if ($global:isDark) { Brush("#A7F3D0") } else { Brush("#047857") }
+    $d64.Margin = New-Object System.Windows.Thickness(0, 1, 0, 0)
+    [void]$txt64Sp.Children.Add($d64)
+    [System.Windows.Controls.Grid]::SetColumn($txt64Sp, 1)
+    [void]$grid64.Children.Add($txt64Sp)
+
+    $badge64 = New-Object System.Windows.Controls.Border
+    $badge64.CornerRadius = New-Object System.Windows.CornerRadius(6)
+    $badge64.Background = Brush("#10B981")
+    $badge64.Padding = New-Object System.Windows.Thickness(8, 3, 8, 3)
+    $badge64.VerticalAlignment = "Center"
+    $b64Txt = New-Object System.Windows.Controls.TextBlock
+    $b64Txt.Text = "ÖNERİLEN"
+    $b64Txt.FontSize = 9.5; $b64Txt.FontWeight = "Bold"; $b64Txt.Foreground = Brush("#FFFFFF")
+    $badge64.Child = $b64Txt
+    [System.Windows.Controls.Grid]::SetColumn($badge64, 2)
+    [void]$grid64.Children.Add($badge64)
+
+    $btn64.Child = $grid64
+    $btn64.Add_MouseLeftButtonUp({
+        $script:tempSelArch = "x64"
+        $dlg.Close()
+    })
+    [void]$optSp.Children.Add($btn64)
+
+    # SEÇENEK 2: 32-BIT (x86) — ALTINDA
+    $btn32 = New-Object System.Windows.Controls.Border
+    $btn32.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $btn32.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush("#F0F9FF") }
+    $btn32.BorderBrush = if ($global:isDark) { Brush("#1E3A8A") } else { Brush("#BAE6FD") }
+    $btn32.BorderThickness = New-Object System.Windows.Thickness(1.2)
+    $btn32.Padding = New-Object System.Windows.Thickness(14, 10, 14, 10)
+    $btn32.Margin = New-Object System.Windows.Thickness(0, 0, 0, 9)
+    $btn32.Cursor = "Hand"
+
+    $grid32 = New-Object System.Windows.Controls.Grid
+    $g32C0 = New-Object System.Windows.Controls.ColumnDefinition; $g32C0.Width = [System.Windows.GridLength]::Auto
+    $g32C1 = New-Object System.Windows.Controls.ColumnDefinition; $g32C1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $g32C2 = New-Object System.Windows.Controls.ColumnDefinition; $g32C2.Width = [System.Windows.GridLength]::Auto
+    [void]$grid32.ColumnDefinitions.Add($g32C0); [void]$grid32.ColumnDefinitions.Add($g32C1); [void]$grid32.ColumnDefinitions.Add($g32C2)
+
+    $ico32 = New-Object System.Windows.Controls.TextBlock
+    $ico32.Text = "⚙️"
+    $ico32.FontSize = 20
+    $ico32.VerticalAlignment = "Center"
+    $ico32.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+    [System.Windows.Controls.Grid]::SetColumn($ico32, 0)
+    [void]$grid32.Children.Add($ico32)
+
+    $txt32Sp = New-Object System.Windows.Controls.StackPanel
+    $t32 = New-Object System.Windows.Controls.TextBlock
+    $t32.Text = "32-Bit (x86)"
+    $t32.FontWeight = "Bold"; $t32.FontSize = 12.5
+    $t32.Foreground = if ($global:isDark) { Brush("#38BDF8") } else { Brush("#0369A1") }
+    [void]$txt32Sp.Children.Add($t32)
+
+    $d32 = New-Object System.Windows.Controls.TextBlock
+    $d32.Text = "Eski nesil sistemler ve 32-bit çalışma ortamı gerektiren araçlar için."
+    $d32.FontSize = 10
+    $d32.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $d32.Margin = New-Object System.Windows.Thickness(0, 1, 0, 0)
+    [void]$txt32Sp.Children.Add($d32)
+    [System.Windows.Controls.Grid]::SetColumn($txt32Sp, 1)
+    [void]$grid32.Children.Add($txt32Sp)
+
+    $badge32 = New-Object System.Windows.Controls.Border
+    $badge32.CornerRadius = New-Object System.Windows.CornerRadius(6)
+    $badge32.Background = Brush("#0284C7")
+    $badge32.Padding = New-Object System.Windows.Thickness(8, 3, 8, 3)
+    $badge32.VerticalAlignment = "Center"
+    $b32Txt = New-Object System.Windows.Controls.TextBlock
+    $b32Txt.Text = "32-BIT"
+    $b32Txt.FontSize = 9.5; $b32Txt.FontWeight = "Bold"; $b32Txt.Foreground = Brush("#FFFFFF")
+    $badge32.Child = $b32Txt
+    [System.Windows.Controls.Grid]::SetColumn($badge32, 2)
+    [void]$grid32.Children.Add($badge32)
+
+    $btn32.Child = $grid32
+    $btn32.Add_MouseLeftButtonUp({
+        $script:tempSelArch = "x86"
+        $dlg.Close()
+    })
+    [void]$optSp.Children.Add($btn32)
+
+    # SEÇENEK 3: DİĞER SÜRÜMLER / OTOMATİK
+    $btnAuto = New-Object System.Windows.Controls.Border
+    $btnAuto.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $btnAuto.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#F8FAFC") }
+    $btnAuto.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#E2E8F0") }
+    $btnAuto.BorderThickness = New-Object System.Windows.Thickness(1.2)
+    $btnAuto.Padding = New-Object System.Windows.Thickness(14, 10, 14, 10)
+    $btnAuto.Cursor = "Hand"
+
+    $gridAuto = New-Object System.Windows.Controls.Grid
+    $gaC0 = New-Object System.Windows.Controls.ColumnDefinition; $gaC0.Width = [System.Windows.GridLength]::Auto
+    $gaC1 = New-Object System.Windows.Controls.ColumnDefinition; $gaC1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $gaC2 = New-Object System.Windows.Controls.ColumnDefinition; $gaC2.Width = [System.Windows.GridLength]::Auto
+    [void]$gridAuto.ColumnDefinitions.Add($gaC0); [void]$gridAuto.ColumnDefinitions.Add($gaC1); [void]$gridAuto.ColumnDefinitions.Add($gaC2)
+
+    $icoAuto = New-Object System.Windows.Controls.TextBlock
+    $icoAuto.Text = "🖥️"
+    $icoAuto.FontSize = 20
+    $icoAuto.VerticalAlignment = "Center"
+    $icoAuto.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+    [System.Windows.Controls.Grid]::SetColumn($icoAuto, 0)
+    [void]$gridAuto.Children.Add($icoAuto)
+
+    $txtAutoSp = New-Object System.Windows.Controls.StackPanel
+    $tAuto = New-Object System.Windows.Controls.TextBlock
+    $tAuto.Text = "Otomatik (Sistem Varsayılanı)"
+    $tAuto.FontWeight = "Bold"; $tAuto.FontSize = 12.5
+    $tAuto.Foreground = if ($global:isDark) { Brush("#F1F5F9") } else { Brush("#334155") }
+    [void]$txtAutoSp.Children.Add($tAuto)
+
+    $dAuto = New-Object System.Windows.Controls.TextBlock
+    $dAuto.Text = "Bilgisayarınızın donanımına (x64, x86 veya ARM64) en uygun resmi paketi otomatik seçer."
+    $dAuto.FontSize = 10
+    $dAuto.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $dAuto.Margin = New-Object System.Windows.Thickness(0, 1, 0, 0)
+    [void]$txtAutoSp.Children.Add($dAuto)
+    [System.Windows.Controls.Grid]::SetColumn($txtAutoSp, 1)
+    [void]$gridAuto.Children.Add($txtAutoSp)
+
+    $badgeAuto = New-Object System.Windows.Controls.Border
+    $badgeAuto.CornerRadius = New-Object System.Windows.CornerRadius(6)
+    $badgeAuto.Background = if ($global:isDark) { Brush("#334155") } else { Brush("#94A3B8") }
+    $badgeAuto.Padding = New-Object System.Windows.Thickness(8, 3, 8, 3)
+    $badgeAuto.VerticalAlignment = "Center"
+    $baTxt = New-Object System.Windows.Controls.TextBlock
+    $baTxt.Text = "OTOMATİK"
+    $baTxt.FontSize = 9.5; $baTxt.FontWeight = "Bold"; $baTxt.Foreground = Brush("#FFFFFF")
+    $badgeAuto.Child = $baTxt
+    [System.Windows.Controls.Grid]::SetColumn($badgeAuto, 2)
+    [void]$gridAuto.Children.Add($badgeAuto)
+
+    $btnAuto.Child = $gridAuto
+    $btnAuto.Add_MouseLeftButtonUp({
+        $script:tempSelArch = "auto"
+        $dlg.Close()
+    })
+    [void]$optSp.Children.Add($btnAuto)
+
+    # 3. İptal Butonu
+    $btnCancel = New-Object System.Windows.Controls.Button
+    $btnCancel.Content = "Vazgeç"
+    $btnCancel.Height = 28; $btnCancel.Width = 80
+    $btnCancel.HorizontalAlignment = "Right"
+    $btnCancel.Background = [System.Windows.Media.Brushes]::Transparent
+    $btnCancel.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $btnCancel.BorderThickness = New-Object System.Windows.Thickness(0)
+    $btnCancel.Cursor = "Hand"
+    $btnCancel.Add_Click({ $dlg.Close() })
+    [System.Windows.Controls.Grid]::SetRow($btnCancel, 2)
+    [void]$mainGrid.Children.Add($btnCancel)
+
+    $mainBorder.Child = $mainGrid
+    $dlg.Content = $mainBorder
+    [void]$dlg.ShowDialog()
+
+    return $script:tempSelArch
+}
+
 
 ## --- KAYNAK SEÇİM DİYALOĞU (MODERN & TERCİHİ HATIRLA DESTEKLİ) ---
 function Show-SourceSelectDialog($app, $iconSource = $null) {
@@ -3951,22 +4242,12 @@ function Toggle-CardSelection($card) {
         $qInstalled   = @($global:selectedQueue | Where-Object { $_.Tag.IsInstalled })
 
         if ($qUninstalled.Count -gt 0 -and $state.IsInstalled) {
-            [System.Windows.MessageBox]::Show(
-                "Kurulum sırasına sadece henüz bilgisayarınızda yüklü olmayan uygulamalar eklenebilir.`n`nYüklü bir uygulamayı kaldırmak veya güncellemek için önce sağdaki kurulum sırasını temizleyin.",
-                "Sıra Güvenlik Koruması",
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Warning
-            )
+            Show-ModernAlert "Sıra Güvenlik Koruması" "Kurulum sırasına sadece henüz bilgisayarınızda yüklü olmayan uygulamalar eklenebilir.`n`nYüklü bir uygulamayı kaldırmak veya güncellemek için önce sağdaki işlem sırasını temizleyin." "WARN"
             return
         }
 
         if ($qInstalled.Count -gt 0 -and (-not $state.IsInstalled)) {
-            [System.Windows.MessageBox]::Show(
-                "Kaldırma/Güncelleme sırasına yüklü olmayan uygulamalar eklenemez.`n`nYeni bir uygulama kurmak için önce sağdaki işlem sırasını temizleyin.",
-                "Sıra Güvenlik Koruması",
-                [System.Windows.MessageBoxButton]::OK,
-                [System.Windows.MessageBoxImage]::Warning
-            )
+            Show-ModernAlert "Sıra Güvenlik Koruması" "Kaldırma/Güncelleme sırasına yüklü olmayan uygulamalar eklenemez.`n`nYeni bir uygulama kurmak için önce sağdaki işlem sırasını temizleyin." "WARN"
             return
         }
 
@@ -3974,43 +4255,43 @@ function Toggle-CardSelection($card) {
         if (-not $state.IsInstalled) {
             $confInfo = Get-AppVersionConflictInfo $app
             if ($confInfo.HasConflict) {
-                [System.Windows.MessageBox]::Show(
-                    "Bu uygulamanın başka bir sürümü ('$($confInfo.ConflictName)') bilgisayarınızda zaten yüklü!`n`nSistem çakışması ve dosya bozulmalarını önlemek için, bu sürümü kurmadan önce mevcut '$($confInfo.ConflictName)' sürümünü kaldırmalısınız.",
-                    "Sürüm Çakışması Engellendi",
-                    [System.Windows.MessageBoxButton]::OK,
-                    [System.Windows.MessageBoxImage]::Warning
-                )
+                Show-ModernAlert "Sürüm Çakışması Engellendi" "Bu uygulamanın başka bir sürümü ('$($confInfo.ConflictName)') bilgisayarınızda zaten yüklü!`n`nSistem çakışması ve dosya bozulmalarını önlemek için, bu sürümü kurmadan önce mevcut '$($confInfo.ConflictName)' sürümünü kaldırmalısınız." "WARN"
                 return
             }
         }
 
-        # YUKLU OLANLARDA: Kaynak secim diyalogu gosterilmez, degistirilemez!
+        # YUKLU OLANLARDA: Kaynak ve sürüm diyalogu gösterilmez, değiştirilemez!
         if (-not $state.IsInstalled) {
+            # Kullanıcı İsteği: Uygulama seçerken sürüm/mimari sorsun (En başta 64-bit Önerilen, altında 32-bit)
+            $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
+            if (-not $isPureStore -and $app.Cat -ne 'Runtimes') {
+                $chosenArch = Show-VersionSelectDialog $app $state.IconSource
+                if (-not $chosenArch) { return }
+                $app.SelectedArch = $chosenArch
+            }
+
             $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
             if ($hasDualSource) {
                 if ($global:preferredInstallSource -eq "Normal") {
-                    # Sag ustte Normal secildiyse sorulmadan Normal yap
                     $chosenSource = "Normal"
                     $app.SelectedSource = $chosenSource
                     Update-CardSourceBadge $card $chosenSource
                 } elseif ($global:preferredInstallSource -eq "Store") {
-                    # Sag ustte Store secildiyse sorulmadan Store yap
                     $chosenSource = "Store"
                     $app.SelectedSource = $chosenSource
                     Update-CardSourceBadge $card $chosenSource
                 } else {
-                    # Sag ustte 'Her Zaman Sor' aciksa: Resim 3'teki gibi Show-SourceSelectDialog sor!
                     $chosenSource = Show-SourceSelectDialog $app $state.IconSource
                     if (-not $chosenSource) { return }
                     $app.SelectedSource = $chosenSource
                     Update-CardSourceBadge $card $chosenSource
                 }
             } else {
-                $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
                 if ($isPureStore) {
                     $app.SelectedSource = "Store"
                 } else {
                     $app.SelectedSource = "Normal"
+                    Update-CardSourceBadge $card "Normal"
                 }
             }
         }
@@ -6039,13 +6320,8 @@ function Invoke-BatchOperation([string]$operation) {
                 # REVO UNINSTALLER MODU SORUSU:
                 # Kullanıcıya geride kalan klasör ve kayıt defteri artıklarını temizlemek isteyip istemediğini sor
                 try {
-                    $askRevo = [System.Windows.MessageBox]::Show(
-                        "'$($app.Name)' kaldırma işlemi tamamlandı.`n`nRevo Uninstaller tarzı derin tarama yaparak geride kalan tüm artık klasörleri ve Kayıt Defteri (Registry) kalıntılarını temizlemek ister misiniz?",
-                        "Revo Derin Kaldırma ve Kalıntı Temizleyici",
-                        [System.Windows.MessageBoxButton]::YesNo,
-                        [System.Windows.MessageBoxImage]::Question
-                    )
-                    if ($askRevo -eq [System.Windows.MessageBoxResult]::Yes) {
+                                    $askRevo = Show-ModernConfirmDialog "Revo Uninstaller Modu (Derin Temizlik)" "Derin Temizlik" @("'$($app.Name)' uygulaması standart olarak kaldırıldı.", "Arka planda kalan kayıt defteri (Registry) anahtarlarını ve dosya kalıntılarını tarayıp temizlemek ister misiniz?")
+                if ($askRevo) {
                         Show-RevoDeepCleanModal $app.Name $app.Id $app.Slug
                     }
                 } catch {}
@@ -6726,17 +7002,17 @@ function Show-DefenderSecurityModal {
     $global:activeDefenderProc = $null
     $global:activeDefenderAction = ""
     $global:defOutFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "smp_defender_out.txt")
+    $global:defStopwatch = New-Object System.Diagnostics.Stopwatch
 
     $timer = New-Object System.Windows.Threading.DispatcherTimer
-    $timer.Interval = [TimeSpan]::FromSeconds(1)
-    $elapsedSec = 0
+    $timer.Interval = [TimeSpan]::FromMilliseconds(500)
     $timer.Add_Tick({
-        $elapsedSec++
+        $elapsedSec = [int]$global:defStopwatch.Elapsed.TotalSeconds
         $m = [Math]::Floor($elapsedSec / 60)
         $s = $elapsedSec % 60
         $sCol3Val.Text = "{0:D2}:{1:D2}" -f [int]$m, [int]$s
 
-        # Canli Tahmini Kalan Sure Hesaplama (Resim 2)
+        # Canli Tahmini Kalan Sure Hesaplama (Resim 2 Duzeltmesi)
         if ($global:activeDefenderAction -match 'Hızlı') {
             $targetSec = 85
             if ($elapsedSec -lt $targetSec) {
@@ -6767,6 +7043,7 @@ function Show-DefenderSecurityModal {
         if ($global:activeDefenderProc) {
             if ($global:activeDefenderProc.HasExited) {
                 $timer.Stop()
+                $global:defStopwatch.Stop()
                 $proc = $global:activeDefenderProc
                 $global:activeDefenderProc = $null
                 if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed }
@@ -6812,7 +7089,7 @@ function Show-DefenderSecurityModal {
         $sCol1Val.Text = "● $actionName..."; $sCol1Val.Foreground = Brush("#F59E0B")
         $txtLog.Text = "[$([DateTime]::Now.ToString('HH:mm:ss'))] $actionName başlatıldı... Lütfen bekleyin.`n"
 
-        $elapsedSec = 0
+        $global:defStopwatch.Restart()
         $sCol3Val.Text = "00:00"
         $global:activeDefenderAction = $actionName
         if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Visible }
@@ -6855,7 +7132,7 @@ function Show-DefenderSecurityModal {
     $cardFull.Add_MouseLeftButtonUp({ & $RunSilentDefender "-Scan -ScanType 2" "Tam Tarama" })
     $cardUpd.Add_MouseLeftButtonUp({ & $RunSilentDefender "-SignatureUpdate" "İmza Güncelleme" })
     $cardOpen.Add_MouseLeftButtonUp({
-        try { Start-Process "windowsdefender:" } catch { [System.Windows.MessageBox]::Show($_.Exception.Message) }
+        try { Start-Process "windowsdefender:" } catch { Show-ModernAlert "Hata" "Windows Güvenliği açılamadı: $($_.Exception.Message)" "ERR" }
     })
 
     $mBorder.Child = $mGrid
@@ -8271,8 +8548,8 @@ function Show-DriverManagerModal {
                     param($s, $e)
                     $e.Handled = $true
                     $msg = "$($driverObj.Name) aygıtı için otomatik sürücü onarımı ve arama başlatılsın mı?`n`n1. Sistemde donanım değişiklikleri taranacak.`n2. Windows Update isteğe bağlı sürücü güncelleştirmeleri ekranı açılacak.`n3. Donanım kimliği ile internette resmi sürücü aranacak."
-                    $ans = [System.Windows.MessageBox]::Show($msg, "Sürücü Onarımı ve Kurulum", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question)
-                    if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
+                    $ans = Show-ModernConfirmDialog "Sürücü Onarımı ve Kurulum" "Sürücü Onar" @($msg)
+                    if ($ans) {
                         Start-Process "pnputil.exe" -ArgumentList "/scan-devices" -Wait -NoNewWindow
                         Start-Process "ms-settings:windowsupdate-optionalupdates"
                         if ($driverObj.HardwareID) {
@@ -8301,8 +8578,8 @@ function Show-DriverManagerModal {
                     $btnToggle = New-CircularBtn (New-VectorPowerIcon "#FFFFFF") "#475569" "Aygıtı Pasife Al (Devre Dışı Bırak)" {
                         param($s, $e)
                         $e.Handled = $true
-                        $ans = [System.Windows.MessageBox]::Show("$($driverObj.Name) aygıtını pasife almak (devre dışı bırakmak) istediğinize emin misiniz?`n`nDevre dışı bırakıldığında bu donanım çalışmayacaktır.", "Aygıtı Pasife Al", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
-                        if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
+                        $ans = Show-ModernConfirmDialog "Aygıtı Pasife Al" "Devre Dışı Bırak" @("'$($driverObj.Name)' aygıtını pasife almak (devre dışı bırakmak) istediğinize emin misiniz?`n`nDevre dışı bırakıldığında bu donanım çalışmayacaktır.")
+                        if ($ans) {
                             Start-Process "pnputil.exe" -ArgumentList "/disable-device `"$($driverObj.InstanceId)`"" -Wait -NoNewWindow
                             try { Disable-PnpDevice -InstanceId $driverObj.InstanceId -Confirm:$false -ErrorAction SilentlyContinue } catch {}
                             Show-ModernAlert "Aygıt Pasife Alındı" "$($driverObj.Name) aygıtı devre dışı bırakıldı." "WARN"
@@ -8317,8 +8594,8 @@ function Show-DriverManagerModal {
             $btnUninst = New-CircularBtn "✕" "#EF4444" "Sürücüyü / Aygıtı Sistemden Kaldır" {
                 param($s, $e)
                 $e.Handled = $true
-                $ans = [System.Windows.MessageBox]::Show("$($driverObj.Name) ($($driverObj.InfName)) sürücüsünü / aygıtını sistemden kaldırmak istediğinize emin misiniz?`n`nBu işlem sürücüyü Windows sürücü deposundan ve sistemden silecektir.", "Kaldırma Onayı", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
-                if ($ans -eq [System.Windows.MessageBoxResult]::Yes) {
+                $ans = Show-ModernConfirmDialog "Sürücüyü Sistemden Kaldır" "Kaldır" @("'$($driverObj.Name)' ($($driverObj.InfName)) sürücüsünü sistemden kaldırmak istediğinize emin misiniz?`n`nBu işlem sürücüyü Windows sürücü deposundan ve sistemden silecektir.")
+                if ($ans) {
                     if ($driverObj.InfName -match '^oem\d+\.inf$') {
                         Start-Process "pnputil.exe" -ArgumentList "/delete-driver $($driverObj.InfName) /uninstall /force" -Wait -NoNewWindow
                     } elseif ($driverObj.InstanceId) {
