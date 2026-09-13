@@ -2601,6 +2601,40 @@ function Update-PrefSourceButton {
     }
 }
 
+function global:Update-CardSourceBadge($card, [string]$source) {
+    if (-not $card -or -not $card.Tag) { return }
+    $state = $card.Tag
+    if (-not $state.SourceBadge -or -not $state.SourceBadgeText) { return }
+    # Yuklu olan uygulamalarin rozeti kurulu gercek duruma gore kilitlidir, degistirilemez!
+    if ($state.IsInstalled) { return }
+
+    if ($source -eq "Store") {
+        # Soft pastel purple / indigo
+        $state.SourceBadge.Background = if ($global:isDark) { Brush("#2A2458") } else { Brush("#EDE9FE") }
+        $state.SourceBadge.BorderBrush = if ($global:isDark) { Brush("#7C3AED") } else { Brush("#DDD6FE") }
+        $state.SourceBadgeText.Text = "Store"
+        $state.SourceBadgeText.Foreground = if ($global:isDark) { Brush("#D8B4FE") } else { Brush("#6D28D9") }
+        if ($state.SourceBadgeImg) {
+            if ($global:bmpStoreLogo) {
+                $state.SourceBadgeImg.Source = $global:bmpStoreLogo
+            }
+            $state.SourceBadgeImg.Visibility = [System.Windows.Visibility]::Visible
+        }
+    } else {
+        # Soft pastel sky / cyan
+        $state.SourceBadge.Background = if ($global:isDark) { Brush("#0C3247") } else { Brush("#E0F2FE") }
+        $state.SourceBadge.BorderBrush = if ($global:isDark) { Brush("#0284C7") } else { Brush("#BAE6FD") }
+        $state.SourceBadgeText.Text = "Normal"
+        $state.SourceBadgeText.Foreground = if ($global:isDark) { Brush("#7DD3FC") } else { Brush("#0369A1") }
+        if ($state.SourceBadgeImg) {
+            if ($global:bmpGlobeLogo) {
+                $state.SourceBadgeImg.Source = $global:bmpGlobeLogo
+            }
+            $state.SourceBadgeImg.Visibility = [System.Windows.Visibility]::Visible
+        }
+    }
+}
+
 $CycleSourcePrefHandler = {
     if ($global:preferredInstallSource -eq "Ask") {
         $global:preferredInstallSource = "Normal"
@@ -3717,7 +3751,11 @@ function New-CompactAppCard($app) {
             if ($storePkg) { $hasStoreInst = $true }
         }
         $nativeCmd = Get-AppUninstallCommand $app.Name $app.Id
-        $hasNormalInst = ($nativeCmd -ne $null -and $nativeCmd.Cmd) -or (if ($app.ExePath) { Test-Path $app.ExePath } else { $false }) -or ($global:verifiedInstalledIds.Contains($app.Id))
+        $exeExists = $false
+        if ($app.ExePath) {
+            try { if (Test-Path $app.ExePath) { $exeExists = $true } } catch {}
+        }
+        $hasNormalInst = ($nativeCmd -ne $null -and $nativeCmd.Cmd) -or $exeExists -or ($global:verifiedInstalledIds.Contains($app.Id))
         
         if ($hasStoreInst -and $hasNormalInst) {
             $instSourceType = "Both"
@@ -3733,9 +3771,7 @@ function New-CompactAppCard($app) {
     # Çift Kaynak (Store ve Normal) Seçim Rozeti veya Store Rozeti
     $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
     if ($hasDualSource -and -not $isInstalled) {
-        if (-not $app.SelectedSource -or $app.SelectedSource -eq "") {
-            $app.SelectedSource = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
-        }
+        $app.SelectedSource = if ($global:preferredInstallSource -eq "Store") { "Store" } else { "Normal" }
     }
 
     $sourceBadge = $null
@@ -5032,7 +5068,11 @@ function Invoke-BatchOperation([string]$operation) {
                     } | Select-Object -First 1
 
                     $nativeUninst = Get-AppUninstallCommand $app.Name $app.Id
-                    $hasNormalInstalled = ($nativeUninst -ne $null -and $nativeUninst.Cmd) -or (if ($app.ExePath) { Test-Path $app.ExePath } else { $false })
+                    $exeExists = $false
+                    if ($app.ExePath) {
+                        try { if (Test-Path $app.ExePath) { $exeExists = $true } } catch {}
+                    }
+                    $hasNormalInstalled = ($nativeUninst -ne $null -and $nativeUninst.Cmd) -or $exeExists
                     $hasStoreInstalled = ($storePkg -ne $null)
 
                     $targetUninstallType = "" # "Normal", "Store", "Both"
@@ -5158,7 +5198,9 @@ function Invoke-BatchOperation([string]$operation) {
                 while ($waitSec -lt 8) {
                     Start-Sleep -Seconds 1
                     $waitSec++
-                    $stillInstalled = Is-AppActuallyInstalled $app.Name $app.Id (if ($app.ExePath) { $app.ExePath } else { "" }) (if ($app.RegistryName) { $app.RegistryName } else { "" })
+                    $appExe = if ($app.ExePath) { $app.ExePath } else { "" }
+                    $appReg = if ($app.RegistryName) { $app.RegistryName } else { "" }
+                    $stillInstalled = Is-AppActuallyInstalled $app.Name $app.Id $appExe $appReg
                     if (-not $stillInstalled) {
                         $exitCode = 0
                         $fullLog = "Uygulama sistemden başarıyla kaldırıldı."
@@ -5666,7 +5708,9 @@ function Show-DefenderSecurityModal {
         $c.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
         
         # Bitisikligi onleyen ayrismis zarif bosluklar (5. resimdeki sikisikligi cozer)
-        $c.Margin = New-Object System.Windows.Thickness(if ($col -eq 0) { 0 } else { 8 }, 0, if ($col -eq 3) { 0 } else { 8 }, 0)
+        $marginLeft = if ($col -eq 0) { 0 } else { 8 }
+        $marginRight = if ($col -eq 3) { 0 } else { 8 }
+        $c.Margin = New-Object System.Windows.Thickness($marginLeft, 0, $marginRight, 0)
         $c.Cursor = "Hand"
 
         $sp = New-Object System.Windows.Controls.StackPanel
