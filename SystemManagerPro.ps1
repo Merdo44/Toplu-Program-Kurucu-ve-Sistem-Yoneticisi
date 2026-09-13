@@ -23,6 +23,30 @@ Add-Type -AssemblyName System.Drawing
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# --- GLOBAL HATA KAYIT & GUVENLIK SISTEMI ---
+$global:errorLogPath = "c:\projem\error_log.txt"
+
+function global:Write-AppErrorLog([string]$context, [System.Exception]$ex) {
+    try {
+        $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        $logEntry = "[$timestamp] ERROR in [$context]:`nMessage: $($ex.Message)`nType: $($ex.GetType().FullName)`nStackTrace:`n$($ex.StackTrace)`n"
+        if ($ex.InnerException) {
+            $logEntry += "InnerException: $($ex.InnerException.Message)`n$($ex.InnerException.StackTrace)`n"
+        }
+        $logEntry += ("-" * 60) + "`n"
+        [System.IO.File]::AppendAllText($global:errorLogPath, $logEntry, [System.Text.Encoding]::UTF8)
+    } catch {}
+}
+
+try {
+    [System.AppDomain]::CurrentDomain.add_UnhandledException({
+        param($sender, $e)
+        $ex = $e.ExceptionObject -as [System.Exception]
+        if ($ex) { Write-AppErrorLog "AppDomain.UnhandledException" $ex }
+    })
+} catch {}
+
+
 # --- WINGET YOLU TESPİTİ ---
 $global:wingetExe = "winget.exe"
 $possibleWingetPaths = @(
@@ -110,19 +134,19 @@ $global:localLogosMap = @{
     "Kaspersky"                        = @("330px-Kaspersky_icon.svg.png")
     "Adobe Acrobat Reader"             = @("3840px-Adobe_Acrobat_Reader_icon.png")
     "Google Chrome"                    = @("chrome_crisp.png", "3840px-Google_Chrome_icon_Februa.png")
-        "Visual Studio Community"          = @("330px-Visual_Studio_Icon_2026.sv.png", "3840px-Visual_Studio_Icon_2022.s.png")
-    "Visual C++ 2015-2022 (x64)"          = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2015-2022 (x86)"          = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2013 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2013 (x86)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2012 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2012 (x86)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2010 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2010 (x86)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2008 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2008 (x86)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2005 (x64)"               = @("visual_studio_2019.png", "visual_cpp.png")
-    "Visual C++ 2005 (x86)"               = @("visual_studio_2019.png", "visual_cpp.png")
+        "Visual Studio Community"          = @("330px-Visual_Studio_Icon_2026.sv.png", "visual_studio.png", "3840px-Visual_Studio_Icon_2022.s.png")
+    "Visual C++ 2015-2022 (x64)"          = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2015-2022 (x86)"          = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2013 (x64)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2013 (x86)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2012 (x64)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2012 (x86)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2010 (x64)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2010 (x86)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2008 (x64)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2008 (x86)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2005 (x64)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
+    "Visual C++ 2005 (x86)"               = @("visual_studio.png", "330px-Visual_Studio_Icon_2026.sv.png")
     "WhatsApp"                         = @("3840px-WhatsApp.svg.png")
     "Windsurf Editor"                  = @("8xk80rgc0hqe1.png")
     "Adobe Creative Cloud"             = @("adobe-creative-cloud.png")
@@ -1935,18 +1959,18 @@ $global:apps = @(
     @{Name="ASP.NET Core Runtime 9.0 (x64)"; Id="Microsoft.DotNet.AspNetCore.9"; Slug="dotnet"; Domain="microsoft.com"; Desc="Web tabanlı .NET 9 bileşenleri"; Cat="Runtimes"},
 
     # Visual C++ Kütüphaneleri
-    @{Name="Visual C++ 2015-2022 (x64)"; Id="Microsoft.VCRedist.2015+.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="Oyunlar için zorunlu DLL kütüphanesi (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2015-2022 (x86)"; Id="Microsoft.VCRedist.2015+.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="32-bit oyunlar için C++ DLL paketi (x86)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2013 (x64)"; Id="Microsoft.VCRedist.2013.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="2013 dönemi kütüphanesi (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2013 (x86)"; Id="Microsoft.VCRedist.2013.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="32-bit 2013 kütüphanesi (x86)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2012 (x64)"; Id="Microsoft.VCRedist.2012.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="2012 dönemi kütüphaneleri (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2012 (x86)"; Id="Microsoft.VCRedist.2012.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="32-bit 2012 kütüphaneleri (x86)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2010 (x64)"; Id="Microsoft.VCRedist.2010.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="Eski yazılımlar için kütüphane (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2010 (x86)"; Id="Microsoft.VCRedist.2010.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="Eski yazılımlar için kütüphane (x86)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2008 (x64)"; Id="Microsoft.VCRedist.2008.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="Eski sistem bileşenleri (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2008 (x86)"; Id="Microsoft.VCRedist.2008.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="Eski sistem bileşenleri (x86)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2005 (x64)"; Id="Microsoft.VCRedist.2005.x64"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="2005 dönemi klasik kütüphanesi (x64)"; Cat="Runtimes"},
-    @{Name="Visual C++ 2005 (x86)"; Id="Microsoft.VCRedist.2005.x86"; Slug="visual_cpp"; Domain=""; DirectUrl=""; Desc="2005 dönemi klasik kütüphanesi (x86)"; Cat="Runtimes"}
+    @{Name="Visual C++ 2015-2022 (x64)"; Id="Microsoft.VCRedist.2015+.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="Oyunlar için zorunlu DLL kütüphanesi (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2015-2022 (x86)"; Id="Microsoft.VCRedist.2015+.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="32-bit oyunlar için C++ DLL paketi (x86)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2013 (x64)"; Id="Microsoft.VCRedist.2013.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="2013 dönemi kütüphanesi (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2013 (x86)"; Id="Microsoft.VCRedist.2013.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="32-bit 2013 kütüphanesi (x86)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2012 (x64)"; Id="Microsoft.VCRedist.2012.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="2012 dönemi kütüphaneleri (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2012 (x86)"; Id="Microsoft.VCRedist.2012.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="32-bit 2012 kütüphaneleri (x86)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2010 (x64)"; Id="Microsoft.VCRedist.2010.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="Eski yazılımlar için kütüphane (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2010 (x86)"; Id="Microsoft.VCRedist.2010.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="Eski yazılımlar için kütüphane (x86)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2008 (x64)"; Id="Microsoft.VCRedist.2008.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="Eski sistem bileşenleri (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2008 (x86)"; Id="Microsoft.VCRedist.2008.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="Eski sistem bileşenleri (x86)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2005 (x64)"; Id="Microsoft.VCRedist.2005.x64"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="2005 dönemi klasik kütüphanesi (x64)"; Cat="Runtimes"},
+    @{Name="Visual C++ 2005 (x86)"; Id="Microsoft.VCRedist.2005.x86"; Slug="visual_studio"; Domain=""; DirectUrl=""; Desc="2005 dönemi klasik kütüphanesi (x86)"; Cat="Runtimes"}
 )
 $apps = $global:apps
 
@@ -2405,6 +2429,7 @@ $xamlRaw = @"
 
                         <Button Name="btnNavAll" Style="{StaticResource ModernNavBtn}" Content="▣    Tüm Uygulamalar"/>
                         <Button Name="btnNavInstalled" Style="{StaticResource ModernNavBtn}" Content="✓    Yüklü Olanlar"/>
+                        <Button Name="btnNavUninstalled" Style="{StaticResource ModernNavBtn}" Content="📥    Yüklü Olmayanlar"/>
                         <Button Name="btnNavUpdates" Style="{StaticResource ModernNavBtn}" Content="⚡    Güncellenecekler"/>
                         <Button Name="btnNavBrowsers" Style="{StaticResource ModernNavBtn}" Content="◎    Tarayıcı &amp; İletişim"/>
                         <Button Name="btnNavGames" Style="{StaticResource ModernNavBtn}" Content="◆    Oyun &amp; Medya"/>
@@ -2702,8 +2727,9 @@ $btnOpenToolsModal = $window.FindName("btnOpenToolsModal")
 
 $navButtons = @{
     "All"       = $window.FindName("btnNavAll")
-    "Installed" = $window.FindName("btnNavInstalled")
-    "Updates"   = $window.FindName("btnNavUpdates")
+    "Installed"   = $window.FindName("btnNavInstalled")
+    "Uninstalled" = $window.FindName("btnNavUninstalled")
+    "Updates"     = $window.FindName("btnNavUpdates")
     "Browsers"  = $window.FindName("btnNavBrowsers")
     "Games"    = $window.FindName("btnNavGames")
     "Dev"      = $window.FindName("btnNavDev")
@@ -4554,7 +4580,7 @@ function Apply-Filters {
 
     foreach ($group in $global:allGroupWrappers) {
         $groupCat = $group.Tag
-        $catMatch = ($global:currentCategory -in @("All", "Installed", "Updates") -or $groupCat -eq $global:currentCategory)
+        $catMatch = ($global:currentCategory -in @("All", "Installed", "Uninstalled", "Updates") -or $groupCat -eq $global:currentCategory)
 
         if (-not $catMatch) {
             $group.Visibility = [System.Windows.Visibility]::Collapsed
@@ -4574,6 +4600,8 @@ function Apply-Filters {
             $filterMatch = $true
             if ($global:currentCategory -eq "Installed") {
                 $filterMatch = $state.IsInstalled
+            } elseif ($global:currentCategory -eq "Uninstalled") {
+                $filterMatch = (-not $state.IsInstalled)
             } elseif ($global:currentCategory -eq "Updates") {
                 $filterMatch = ($state.IsInstalled -and $state.HasUpdate)
             }
@@ -5587,7 +5615,9 @@ function Show-DefenderSecurityModal {
     $hIcoB.BorderBrush = if ($global:isDark) { Brush("#10B981") } else { Brush("#86EFAC") }
     $hIcoB.BorderThickness = New-Object System.Windows.Thickness(1)
     $hIcoB.Margin = New-Object System.Windows.Thickness(0,0,14,0)
-    $hIcoT = New-Object System.Windows.Controls.TextBlock; $hIcoT.Text = "🛡️"; $hIcoT.FontSize = 22
+    $hIcoT = New-Object System.Windows.Controls.TextBlock; $hIcoT.Text = "🛡️"; $hIcoT.FontSize = 24
+    $hIcoT.FontFamily = New-Object System.Windows.Media.FontFamily("Segoe UI Emoji, Segoe UI Symbol")
+    $hIcoT.Foreground = Brush("#10B981")
     $hIcoT.HorizontalAlignment = "Center"; $hIcoT.VerticalAlignment = "Center"
     $hIcoB.Child = $hIcoT
     [System.Windows.Controls.Grid]::SetColumn($hIcoB, 0)
@@ -5678,31 +5708,41 @@ function Show-DefenderSecurityModal {
     [void]$cardsGrid.ColumnDefinitions.Add($cg0); [void]$cardsGrid.ColumnDefinitions.Add($cg1); [void]$cardsGrid.ColumnDefinitions.Add($cg2); [void]$cardsGrid.ColumnDefinitions.Add($cg3)
     $cardsGrid.Margin = New-Object System.Windows.Thickness(0, 0, 0, 14)
 
-    function New-DefenderCard([string]$ico, [string]$title, [string]$sub, [string]$accentHex, [string]$lightBgHex, [string]$lightTextHex, [int]$col) {
+    function New-DefenderCard([string]$ico, [string]$title, [string]$sub, [string]$accentHex, [string]$darkBgHex, [string]$lightBgHex, [string]$titleColor, [int]$col) {
         $c = New-Object System.Windows.Controls.Border
         $c.CornerRadius = New-Object System.Windows.CornerRadius(10)
-        # Gozu yormayan pastel soft renkler
-        $c.Background = if ($global:isDark) { Brush("#131D2E") } else { Brush($lightBgHex) }
-        $c.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush($accentHex) }
-        $c.BorderThickness = New-Object System.Windows.Thickness(1.2)
+        $c.Background = if ($global:isDark) { Brush($darkBgHex) } else { Brush($lightBgHex) }
+        $c.BorderBrush = Brush($accentHex)
+        $c.BorderThickness = New-Object System.Windows.Thickness(1.4)
         $c.Padding = New-Object System.Windows.Thickness(14, 12, 14, 12)
         
-        # Bitisikligi onleyen ayrismis zarif bosluklar (5. resimdeki sikisikligi cozer)
         $marginLeft = if ($col -eq 0) { 0 } else { 8 }
         $marginRight = if ($col -eq 3) { 0 } else { 8 }
         $c.Margin = New-Object System.Windows.Thickness($marginLeft, 0, $marginRight, 0)
         $c.Cursor = "Hand"
 
         $sp = New-Object System.Windows.Controls.StackPanel
-        $sp.IsHitTestVisible = $false # Tiklamanin Border'a puruzsuz ulasmasini saglar
+        $sp.IsHitTestVisible = $false
         
-        $iT = New-Object System.Windows.Controls.TextBlock; $iT.Text = $ico; $iT.FontSize = 22; $iT.Margin = New-Object System.Windows.Thickness(0,0,0,6)
-        $tT = New-Object System.Windows.Controls.TextBlock; $tT.Text = $title; $tT.FontSize = 12.5; $tT.FontWeight = "Bold"
-        $tT.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush($lightTextHex) }
+        $iT = New-Object System.Windows.Controls.TextBlock
+        $iT.Text = $ico
+        $iT.FontSize = 24
+        $iT.FontFamily = New-Object System.Windows.Media.FontFamily("Segoe UI Emoji, Segoe UI Symbol")
+        $iT.Foreground = Brush($accentHex)
+        $iT.Margin = New-Object System.Windows.Thickness(0,0,0,6)
         
-        $sT = New-Object System.Windows.Controls.TextBlock; $sT.Text = $sub; $sT.FontSize = 10
-        $sT.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
-        $sT.Margin = New-Object System.Windows.Thickness(0,3,0,0); $sT.TextWrapping = "Wrap"
+        $tT = New-Object System.Windows.Controls.TextBlock
+        $tT.Text = $title
+        $tT.FontSize = 13
+        $tT.FontWeight = "Bold"
+        $tT.Foreground = Brush($titleColor)
+        
+        $sT = New-Object System.Windows.Controls.TextBlock
+        $sT.Text = $sub
+        $sT.FontSize = 10.5
+        $sT.Foreground = if ($global:isDark) { Brush("#CBD5E1") } else { Brush("#475569") }
+        $sT.Margin = New-Object System.Windows.Thickness(0,3,0,0)
+        $sT.TextWrapping = "Wrap"
         [void]$sp.Children.Add($iT); [void]$sp.Children.Add($tT); [void]$sp.Children.Add($sT)
         $c.Child = $sp
 
@@ -5714,10 +5754,10 @@ function Show-DefenderSecurityModal {
         return $c
     }
 
-    $cardQuick = New-DefenderCard "⚡" "Hızlı Tarama" "Kritik sistem alanlarını tara" "#38BDF8" "#F0F9FF" "#0369A1" 0
-    $cardFull  = New-DefenderCard "🛡️" "Tam Tarama" "Tüm diskleri derinlemesine tara" "#818CF8" "#F5F3FF" "#4F46E5" 1
-    $cardUpd   = New-DefenderCard "🔄" "İmza Güncelle" "En güncel virüs tanımlarını indir" "#34D399" "#ECFDF5" "#059669" 2
-    $cardOpen  = New-DefenderCard "⚙️" "Windows Güvenliği" "Resmi Windows kalkan panelini aç" "#F59E0B" "#FFFBEB" "#B45309" 3
+    $cardQuick = New-DefenderCard "⚡" "Hızlı Tarama" "Kritik sistem alanlarını tara" "#38BDF8" "#0C2338" "#F0F9FF" "#38BDF8" 0
+    $cardFull  = New-DefenderCard "🛡️" "Tam Tarama" "Tüm diskleri derinlemesine tara" "#818CF8" "#1E1B4B" "#F5F3FF" "#818CF8" 1
+    $cardUpd   = New-DefenderCard "🔄" "İmza Güncelle" "En güncel virüs tanımlarını indir" "#10B981" "#064E3B" "#ECFDF5" "#10B981" 2
+    $cardOpen  = New-DefenderCard "⚙️" "Windows Güvenliği" "Resmi Windows kalkan panelini aç" "#F59E0B" "#2E1E05" "#FFFBEB" "#F59E0B" 3
 
     [System.Windows.Controls.Grid]::SetRow($cardsGrid, 2)
     [void]$mGrid.Children.Add($cardsGrid)
@@ -5767,19 +5807,61 @@ function Show-DefenderSecurityModal {
     $footHint.FontSize = 11; $footHint.Foreground = Brush("#64748B"); $footHint.VerticalAlignment = "Center"
     [System.Windows.Controls.Grid]::SetColumn($footHint, 0); [void]$footGrid.Children.Add($footHint)
 
+    $footBtnSp = New-Object System.Windows.Controls.StackPanel
+    $footBtnSp.Orientation = "Horizontal"
+    $footBtnSp.HorizontalAlignment = "Right"
+
+    # Taramayi Durdur / Iptal Et Butonu
+    $btnCancelScan = New-Object System.Windows.Controls.Border
+    $btnCancelScan.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $btnCancelScan.Padding = New-Object System.Windows.Thickness(16, 9, 16, 9)
+    $btnCancelScan.Background = Brush("#DC2626")
+    $btnCancelScan.BorderBrush = Brush("#EF4444")
+    $btnCancelScan.BorderThickness = New-Object System.Windows.Thickness(1)
+    $btnCancelScan.Margin = New-Object System.Windows.Thickness(0, 0, 10, 0)
+    $btnCancelScan.Cursor = "Hand"
+    $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed
+
+    $btnCancelTxt = New-Object System.Windows.Controls.TextBlock; $btnCancelTxt.Text = "⏹  Taramayı Durdur"; $btnCancelTxt.FontSize = 12; $btnCancelTxt.FontWeight = "Bold"; $btnCancelTxt.Foreground = Brush("#FFFFFF")
+    $btnCancelScan.Child = $btnCancelTxt
+
+    $btnCancelScan.Add_MouseLeftButtonUp({
+        if ($global:activeDefenderProc) {
+            try { $global:activeDefenderProc.Kill() } catch {}
+        }
+        $timer.Stop()
+        $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
+        $pBar.Visibility = [System.Windows.Visibility]::Collapsed
+        $sCol1Val.Text = "● Tarama Durduruldu"; $sCol1Val.Foreground = Brush("#EF4444")
+        $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] Tarama kullanıcı tarafından durduruldu.`n"
+        $txtLog.ScrollToEnd()
+        $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed
+    })
+    [void]$footBtnSp.Children.Add($btnCancelScan)
+
     $btnDClose = New-Object System.Windows.Controls.Border
-    $btnDClose.CornerRadius = New-Object System.Windows.CornerRadius(7)
+    $btnDClose.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $btnDClose.Padding = New-Object System.Windows.Thickness(18, 9, 18, 9)
     $btnDClose.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
     $btnDClose.BorderBrush = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") }
     $btnDClose.BorderThickness = New-Object System.Windows.Thickness(1)
-    $btnDClose.Padding = New-Object System.Windows.Thickness(18, 7, 18, 7)
     $btnDClose.Cursor = "Hand"
-    $btnDCloseTxt = New-Object System.Windows.Controls.TextBlock; $btnDCloseTxt.Text = "✕  Pencereyi Kapat"; $btnDCloseTxt.FontSize = 11.5; $btnDCloseTxt.FontWeight = "SemiBold"; $btnDCloseTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#475569") }
+
+    $btnDCloseTxt = New-Object System.Windows.Controls.TextBlock; $btnDCloseTxt.Text = "✕  Pencereyi Kapat"; $btnDCloseTxt.FontSize = 12; $btnDCloseTxt.FontWeight = "SemiBold"
+    $btnDCloseTxt.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
     $btnDClose.Child = $btnDCloseTxt
-    $btnDClose.Add_MouseEnter({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#334155") } else { Brush("#CBD5E1") } })
+
+    $btnDClose.Add_MouseEnter({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#2A374E") } else { Brush("#CBD5E1") } })
     $btnDClose.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") } })
-    $btnDClose.Add_MouseLeftButtonUp({ $dWin.Close() })
-    [System.Windows.Controls.Grid]::SetColumn($btnDClose, 1); [void]$footGrid.Children.Add($btnDClose)
+    $btnDClose.Add_MouseLeftButtonUp({ 
+        if ($global:activeDefenderProc) {
+            try { $global:activeDefenderProc.Kill() } catch {}
+        }
+        $dWin.Close() 
+    })
+    [void]$footBtnSp.Children.Add($btnDClose)
+
+    [System.Windows.Controls.Grid]::SetColumn($footBtnSp, 1); [void]$footGrid.Children.Add($footBtnSp)
 
     [System.Windows.Controls.Grid]::SetRow($footGrid, 4)
     [void]$mGrid.Children.Add($footGrid)
@@ -5819,8 +5901,14 @@ function Show-DefenderSecurityModal {
             Action = $actionName
         }
 
+        $global:activeDefenderProc = $null
+        $global:activeDefenderWorker = $null
+        if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Visible }
+
         $bgWorker = New-Object System.ComponentModel.BackgroundWorker
-        $bgWorker.DoWork += {
+        $global:activeDefenderWorker = $bgWorker
+
+        $bgWorker.add_DoWork({
             param($s, $e)
             $wArg = $e.Argument
             $exe = $wArg.MpPath
@@ -5843,6 +5931,7 @@ function Show-DefenderSecurityModal {
                     $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
 
                     $proc = [System.Diagnostics.Process]::Start($psi)
+                    $global:activeDefenderProc = $proc
                     $outTask = $proc.StandardOutput.ReadToEndAsync()
                     $errTask = $proc.StandardError.ReadToEndAsync()
                     $proc.WaitForExit()
@@ -5854,6 +5943,7 @@ function Show-DefenderSecurityModal {
                     if ($errText) { $outText += "`n" + $errText }
                 } catch {
                     $outText = "MpCmdRun hatasi: " + $_.Exception.Message
+                    Write-AppErrorLog "Defender.MpCmdRun" $_.Exception
                     $errCode = -1
                 }
             } else {
@@ -5872,6 +5962,7 @@ function Show-DefenderSecurityModal {
                     $errCode = 0
                 } catch {
                     $outText = "Defender komut hatası: " + $_.Exception.Message
+                    Write-AppErrorLog "Defender.Start-MpScan" $_.Exception
                     $errCode = 1
                 }
             }
@@ -5881,15 +5972,24 @@ function Show-DefenderSecurityModal {
                 Output = $outText
                 Action = $action
             }
-        }
+        })
 
-        $bgWorker.RunWorkerCompleted += {
+        $bgWorker.add_RunWorkerCompleted({
             param($s, $e)
             $timer.Stop()
-            $res = $e.Result
+            $global:activeDefenderProc = $null
+            if ($btnCancelScan) { $btnCancelScan.Visibility = [System.Windows.Visibility]::Collapsed }
             $cardQuick.IsEnabled = $true; $cardFull.IsEnabled = $true; $cardUpd.IsEnabled = $true; $cardOpen.IsEnabled = $true
             $pBar.Visibility = [System.Windows.Visibility]::Collapsed
 
+            if ($e.Error) {
+                Write-AppErrorLog "Defender.RunWorkerCompleted" $e.Error
+                $sCol1Val.Text = "● Hata Oluştu"; $sCol1Val.Foreground = Brush("#EF4444")
+                $txtLog.Text += "`n[$([DateTime]::Now.ToString('HH:mm:ss'))] İşlem hatası: $($e.Error.Message)`n"
+                return
+            }
+
+            $res = $e.Result
             $fullOut = "$($res.Output)".Trim()
             if ($fullOut) {
                 $txtLog.Text += "`n$fullOut`n"
@@ -5908,7 +6008,7 @@ function Show-DefenderSecurityModal {
                 $txtLog.Text += "[$([DateTime]::Now.ToString('HH:mm:ss'))] $($res.Action) tamamlandı (Kod: $($res.ExitCode)).`n"
             }
             $txtLog.ScrollToEnd()
-        }
+        })
 
         $bgWorker.RunWorkerAsync($workerArg)
     }
@@ -7785,6 +7885,7 @@ $btnOpenToolsModal.Add_Click({
 # --- EVENT ATAMALARI ---
 $navButtons["All"].Add_Click({ Set-CategoryFilter "All" "Tüm Uygulamalar" })
 $navButtons["Installed"].Add_Click({ Set-CategoryFilter "Installed" "Yüklü Uygulamalar" })
+$navButtons["Uninstalled"].Add_Click({ Set-CategoryFilter "Uninstalled" "Yüklü Olmayan Uygulamalar (Kurulabilir)" })
 $navButtons["Updates"].Add_Click({ Set-CategoryFilter "Updates" "Güncellemesi Olan Uygulamalar" })
 $navButtons["Browsers"].Add_Click({ Set-CategoryFilter "Browsers" "Tarayıcı, İletişim & Sosyal Medya" })
 $navButtons["Games"].Add_Click({ Set-CategoryFilter "Games" "Oyun Başlatıcıları, Medya & Dijital Yayın" })
