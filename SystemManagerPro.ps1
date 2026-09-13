@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 
 # --- YÖNETİCİ YETKİ KONTROLÜ ---
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -346,14 +346,20 @@ function Get-WpfIconSource([string]$slug, [string]$altDomain, [string]$directUrl
 # KULLANICI AYARLARI VE KAYNAK TERCİHİ MOTORU
 # ---------------------------------------------------------
 $global:settingsFile = "c:\projem\user_settings.json"
-$global:preferredInstallSource = "Ask" # "Ask", "Normal", "Store"
+$global:preferredInstallSource = "Auto" # "Auto", "Normal", "Store"
 
 function Load-UserSettings {
     if (Test-Path $global:settingsFile) {
         try {
             $json = Get-Content $global:settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($json.PreferredSource) {
-                $global:preferredInstallSource = $json.PreferredSource
+                if ($json.PreferredSource -eq "Ask") {
+                    $global:preferredInstallSource = "Auto"
+                } else {
+                    $global:preferredInstallSource = $json.PreferredSource
+                }
+            } else {
+                $global:preferredInstallSource = "Auto"
             }
         } catch {}
     }
@@ -2841,6 +2847,7 @@ $global:btnSourcePrefToggle = $window.FindName("btnSourcePrefToggle")
 
 function Update-PrefSourceButton {
     $btnList = @($global:btnPrefSourcePill, $global:btnSourcePrefToggle)
+    $archLabel = if ([Environment]::Is64BitOperatingSystem) { "64-Bit" } else { "32-Bit" }
     foreach ($btn in $btnList) {
         if (-not $btn) { continue }
         if ($global:preferredInstallSource -eq "Normal") {
@@ -2850,8 +2857,8 @@ function Update-PrefSourceButton {
             $btn.Content = "Kaynak: Microsoft Store"
             $btn.Foreground = Brush("#C084FC")
         } else {
-            $btn.Content = "Kaynak: Her Zaman Sor"
-            $btn.Foreground = Brush("#94A3B8")
+            $btn.Content = "Kaynak: Otomatik ($archLabel)"
+            $btn.Foreground = Brush("#10B981")
         }
     }
 }
@@ -2894,12 +2901,12 @@ function global:Update-CardSourceBadge($card, [string]$source) {
 }
 
 $CycleSourcePrefHandler = {
-    if ($global:preferredInstallSource -eq "Ask") {
+    if ($global:preferredInstallSource -eq "Auto" -or $global:preferredInstallSource -eq "Ask") {
         $global:preferredInstallSource = "Normal"
     } elseif ($global:preferredInstallSource -eq "Normal") {
         $global:preferredInstallSource = "Store"
     } else {
-        $global:preferredInstallSource = "Ask"
+        $global:preferredInstallSource = "Auto"
     }
     Save-UserSettings
     Update-PrefSourceButton
@@ -4306,37 +4313,18 @@ function Toggle-CardSelection($card) {
 
         # YUKLU OLANLARDA: Kaynak ve sürüm diyalogu gösterilmez, değiştirilemez!
         if (-not $state.IsInstalled) {
-            # Kullanıcı İsteği: Uygulama seçerken sürüm/mimari sorsun (En başta 64-bit Önerilen, altında 32-bit)
-            $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
-            if (-not $isPureStore -and $app.Cat -ne 'Runtimes') {
-                $chosenArch = Show-VersionSelectDialog $app $state.IconSource
-                if (-not $chosenArch) { return }
-                $app.SelectedArch = $chosenArch
+            # Kullanıcı İsteği: 64-bit / 32-bit mimari ve kaynak seçimi tamamen otomatik (OS 64-bit ise x64, değilse x86)
+            if (-not $app.SelectedArch) {
+                $app.SelectedArch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
             }
 
-            $hasDualSource = ($app.HasDual -eq "1") -or ($app.StoreId -and ($app.NormalId -or $app.DownloadUrl))
-            if ($hasDualSource) {
-                if ($global:preferredInstallSource -eq "Normal") {
-                    $chosenSource = "Normal"
-                    $app.SelectedSource = $chosenSource
-                    Update-CardSourceBadge $card $chosenSource
-                } elseif ($global:preferredInstallSource -eq "Store") {
-                    $chosenSource = "Store"
-                    $app.SelectedSource = $chosenSource
-                    Update-CardSourceBadge $card $chosenSource
-                } else {
-                    $chosenSource = Show-SourceSelectDialog $app $state.IconSource
-                    if (-not $chosenSource) { return }
-                    $app.SelectedSource = $chosenSource
-                    Update-CardSourceBadge $card $chosenSource
-                }
+            $isPureStore = ($app.StoreOnly -eq "1") -or ($app.StoreId -and -not $app.NormalId) -or ($app.Id -match '^[A-Z0-9]{12,14}$')
+            if ($isPureStore -or $global:preferredInstallSource -eq "Store") {
+                $app.SelectedSource = "Store"
+                Update-CardSourceBadge $card "Store"
             } else {
-                if ($isPureStore) {
-                    $app.SelectedSource = "Store"
-                } else {
-                    $app.SelectedSource = "Normal"
-                    Update-CardSourceBadge $card "Normal"
-                }
+                $app.SelectedSource = "Normal"
+                Update-CardSourceBadge $card "Normal"
             }
         }
 
