@@ -5938,11 +5938,16 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $closeWizBtn.Child = $closeWizTxt
     $closeWizBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
     $closeWizBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
-    $closeWizBtn.Add_MouseLeftButtonUp({ $wizWin.Close() })
+    $closeWizBtn.Add_PreviewMouseLeftButtonDown({ param($s,$e) $e.Handled = $true; $wizWin.Close() })
+    $closeWizBtn.Add_MouseLeftButtonUp({ param($s,$e) $e.Handled = $true; $wizWin.Close() })
     [System.Windows.Controls.Grid]::SetColumn($closeWizBtn, 1)
     [void]$hdrGrid.Children.Add($closeWizBtn)
 
-    $hdrGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $wizWin.DragMove() } })
+    $hdrGrid.Add_MouseLeftButtonDown({
+        param($s,$e)
+        if ($e.OriginalSource -and ($e.OriginalSource -eq $closeWizBtn -or $e.OriginalSource.Parent -eq $closeWizBtn -or $e.OriginalSource.GetType().Name -like "*Button*")) { return }
+        if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { try { $wizWin.DragMove() } catch {} }
+    })
     [System.Windows.Controls.Grid]::SetRow($hdrGrid, 0)
     [void]$rootGrid.Children.Add($hdrGrid)
 
@@ -7613,7 +7618,8 @@ function Show-DefenderSecurityModal {
     $closeHeaderBtn.Child = $closeHeaderTxt
     $closeHeaderBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
     $closeHeaderBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
-    $closeHeaderBtn.Add_MouseLeftButtonUp({ $dWin.Close() })
+    $closeHeaderBtn.Add_PreviewMouseLeftButtonDown({ param($s,$e) $e.Handled = $true; $dWin.Close() })
+    $closeHeaderBtn.Add_MouseLeftButtonUp({ param($s,$e) $e.Handled = $true; $dWin.Close() })
     [System.Windows.Controls.Grid]::SetColumn($closeHeaderBtn, 2)
     [void]$headerGrid.Children.Add($closeHeaderBtn)
 
@@ -8059,17 +8065,18 @@ function Show-DiskCleanerModal {
     $logoB = New-Object System.Windows.Controls.Border
     $logoB.Width = 46; $logoB.Height = 46
     $logoB.CornerRadius = New-Object System.Windows.CornerRadius(12)
-    $logoB.Background = if ($global:isDark) { Brush("#102336") } else { Brush("#E0F2FE") }
+    $logoB.Background = if ($global:isDark) { Brush("#082F49") } else { Brush("#E0F2FE") }
     $logoB.BorderBrush = Brush("#0284C7")
-    $logoB.BorderThickness = New-Object System.Windows.Thickness(1)
+    $logoB.BorderThickness = New-Object System.Windows.Thickness(1.2)
     $logoB.Margin = New-Object System.Windows.Thickness(0,0,14,0)
 
-    $logoTxt = New-Object System.Windows.Controls.TextBlock
-    $logoTxt.Text = "🧹"
-    $logoTxt.FontSize = 22
-    $logoTxt.HorizontalAlignment = "Center"
-    $logoTxt.VerticalAlignment = "Center"
-    $logoB.Child = $logoTxt
+    $cleanPath = New-Object System.Windows.Shapes.Path
+    $cleanPath.Data = [System.Windows.Media.Geometry]::Parse("M19.36,2.72L20.78,4.14L15.06,9.85C16.13,11.39 16.28,13.24 15.38,14.44L9.06,8.12C10.26,7.22 12.11,7.37 13.65,8.44L19.36,2.72M5.93,17.57C3.92,15.56 2.69,13.16 3,12.08C3.32,10.95 5.5,10.5 7.67,11.08L12.42,15.83C13,18 12.55,20.18 11.42,20.5C10.34,20.81 7.94,19.58 5.93,17.57Z")
+    $cleanPath.Fill = Brush("#38BDF8")
+    $cleanPath.Width = 24; $cleanPath.Height = 24
+    $cleanPath.Stretch = [System.Windows.Media.Stretch]::Uniform
+    $cleanPath.HorizontalAlignment = "Center"; $cleanPath.VerticalAlignment = "Center"
+    $logoB.Child = $cleanPath
     [System.Windows.Controls.Grid]::SetColumn($logoB, 0)
     [void]$hGrid.Children.Add($logoB)
 
@@ -8137,11 +8144,16 @@ function Show-DiskCleanerModal {
     $closeCleanerBtn.Child = $closeCleanerTxt
     $closeCleanerBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
     $closeCleanerBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
-    $closeCleanerBtn.Add_MouseLeftButtonUp({ $cWin.Close() })
+    $closeCleanerBtn.Add_PreviewMouseLeftButtonDown({ param($s,$e) $e.Handled = $true; $cWin.Close() })
+    $closeCleanerBtn.Add_MouseLeftButtonUp({ param($s,$e) $e.Handled = $true; $cWin.Close() })
     [System.Windows.Controls.Grid]::SetColumn($closeCleanerBtn, 3)
     [void]$hGrid.Children.Add($closeCleanerBtn)
 
-    $headerBorder.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $cWin.DragMove() } })
+    $headerBorder.Add_MouseLeftButtonDown({
+        param($s,$e)
+        if ($e.OriginalSource -and ($e.OriginalSource -eq $closeCleanerBtn -or $e.OriginalSource.Parent -eq $closeCleanerBtn -or $e.OriginalSource.GetType().Name -like "*Button*")) { return }
+        if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { try { $cWin.DragMove() } catch {} }
+    })
     $headerBorder.Child = $hGrid
 
     # 2. ACTION BAR (Select All + Buttons)
@@ -9097,10 +9109,15 @@ function Show-DriverManagerModal {
     $closeHubBtn.Child = $closeHubTxt
     $closeHubBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
     $closeHubBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
-    $closeHubBtn.Add_MouseLeftButtonUp({ $hubWin.Close() })
+    $closeHubBtn.Add_PreviewMouseLeftButtonDown({ param($s,$e) $e.Handled = $true; $hubWin.Close() })
+    $closeHubBtn.Add_MouseLeftButtonUp({ param($s,$e) $e.Handled = $true; $hubWin.Close() })
     [void]$topBtns.Children.Add($closeHubBtn)
 
-    $headerGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $hubWin.DragMove() } })
+    $headerGrid.Add_MouseLeftButtonDown({
+        param($s,$e)
+        if ($e.OriginalSource -and ($e.OriginalSource -eq $closeHubBtn -or $e.OriginalSource.Parent -eq $closeHubBtn -or $e.OriginalSource.GetType().Name -like "*Button*")) { return }
+        if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { try { $hubWin.DragMove() } catch {} }
+    })
     [System.Windows.Controls.Grid]::SetColumn($topBtns, 1)
     [void]$headerGrid.Children.Add($topBtns)
     [System.Windows.Controls.Grid]::SetRow($headerGrid, 0)
@@ -9562,13 +9579,35 @@ $btnOpenToolsModal.Add_Click({
     $thc1 = New-Object System.Windows.Controls.ColumnDefinition; $thc1.Width = [System.Windows.GridLength]::Auto
     [void]$tHeaderGrid.ColumnDefinitions.Add($thc0); [void]$tHeaderGrid.ColumnDefinitions.Add($thc1)
 
+    $tHeaderLeftSp = New-Object System.Windows.Controls.StackPanel
+    $tHeaderLeftSp.Orientation = "Horizontal"
+    $tHeaderLeftSp.VerticalAlignment = "Center"
+
+    $hGearBorder = New-Object System.Windows.Controls.Border
+    $hGearBorder.Width = 42; $hGearBorder.Height = 42
+    $hGearBorder.CornerRadius = New-Object System.Windows.CornerRadius(10)
+    $hGearBorder.Background = if ($global:isDark) { Brush("#0C2340") } else { Brush("#E0F2FE") }
+    $hGearBorder.BorderBrush = Brush("#0284C7")
+    $hGearBorder.BorderThickness = New-Object System.Windows.Thickness(1.2)
+    $hGearBorder.Margin = New-Object System.Windows.Thickness(0, 0, 12, 0)
+
+    $hGearTxt = New-Object System.Windows.Controls.TextBlock
+    $hGearTxt.Text = "⚙"
+    $hGearTxt.FontSize = 22
+    $hGearTxt.Foreground = Brush("#38BDF8")
+    $hGearTxt.HorizontalAlignment = "Center"
+    $hGearTxt.VerticalAlignment = "Center"
+    $hGearBorder.Child = $hGearTxt
+    [void]$tHeaderLeftSp.Children.Add($hGearBorder)
+
     $tHeaderTitles = New-Object System.Windows.Controls.StackPanel
+    $tHeaderTitles.VerticalAlignment = "Center"
     $tHeader = New-Object System.Windows.Controls.TextBlock
-    $tHeader.Text = "⚙️  Sistem ve Windows 11 İnce Ayarları"
+    $tHeader.Text = "Sistem ve Windows 11 İnce Ayarları"
     $tHeader.FontSize = 17
     $tHeader.FontWeight = "Bold"
     $tHeader.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $tHeader.Margin = New-Object System.Windows.Thickness(0,0,0,3)
+    $tHeader.Margin = New-Object System.Windows.Thickness(0,0,0,2)
     [void]$tHeaderTitles.Children.Add($tHeader)
 
     $tSub = New-Object System.Windows.Controls.TextBlock
@@ -9576,8 +9615,10 @@ $btnOpenToolsModal.Add_Click({
     $tSub.FontSize = 11
     $tSub.Foreground = Brush("#8C9BB0")
     [void]$tHeaderTitles.Children.Add($tSub)
-    [System.Windows.Controls.Grid]::SetColumn($tHeaderTitles, 0)
-    [void]$tHeaderGrid.Children.Add($tHeaderTitles)
+
+    [void]$tHeaderLeftSp.Children.Add($tHeaderTitles)
+    [System.Windows.Controls.Grid]::SetColumn($tHeaderLeftSp, 0)
+    [void]$tHeaderGrid.Children.Add($tHeaderLeftSp)
 
     $closeToolsBtn = New-Object System.Windows.Controls.Border
     $closeToolsBtn.Width = 32; $closeToolsBtn.Height = 32
@@ -9592,11 +9633,16 @@ $btnOpenToolsModal.Add_Click({
     $closeToolsBtn.Child = $closeToolsTxt
     $closeToolsBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
     $closeToolsBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
-    $closeToolsBtn.Add_MouseLeftButtonUp({ $toolsWin.Close() })
+    $closeToolsBtn.Add_PreviewMouseLeftButtonDown({ param($s,$e) $e.Handled = $true; $toolsWin.Close() })
+    $closeToolsBtn.Add_MouseLeftButtonUp({ param($s,$e) $e.Handled = $true; $toolsWin.Close() })
     [System.Windows.Controls.Grid]::SetColumn($closeToolsBtn, 1)
     [void]$tHeaderGrid.Children.Add($closeToolsBtn)
 
-    $tHeaderGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $toolsWin.DragMove() } })
+    $tHeaderGrid.Add_MouseLeftButtonDown({
+        param($s,$e)
+        if ($e.OriginalSource -and ($e.OriginalSource -eq $closeToolsBtn -or $e.OriginalSource.Parent -eq $closeToolsBtn -or $e.OriginalSource.GetType().Name -like "*Button*")) { return }
+        if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { try { $toolsWin.DragMove() } catch {} }
+    })
     [System.Windows.Controls.Grid]::SetRow($tHeaderGrid, 0)
     [void]$toolsRootGrid.Children.Add($tHeaderGrid)
 
@@ -9606,7 +9652,7 @@ $btnOpenToolsModal.Add_Click({
     $sp = New-Object System.Windows.Controls.StackPanel
     $sp.Margin = New-Object System.Windows.Thickness(24, 6, 24, 24)
 
-    function Add-ModernToolCard($icon, $title, $desc, $btnText, $btnColor, [scriptblock]$action, $extraBtnText = $null, $extraBtnColor = "#6366F1", [scriptblock]$extraAction = $null) {
+    function Add-ModernToolCard($icon, $title, $desc, $btnText, $btnColor, [scriptblock]$action, $extraBtnText = $null, $extraBtnColor = "#6366F1", [scriptblock]$extraAction = $null, [string]$icoColor = "#38BDF8", [string]$icoBgDark = "#0C2340", [string]$icoBgLight = "#E0F2FE", [string]$icoBorder = "#0284C7") {
         $cBorder = New-Object System.Windows.Controls.Border
         $cBorder.Background = if ($global:isDark) { Brush("#151C28") } else { Brush("#FFFFFF") }
         $cBorder.BorderBrush = if ($global:isDark) { Brush("#232E40") } else { Brush("#E2E8F0") }
@@ -9622,18 +9668,26 @@ $btnOpenToolsModal.Add_Click({
         [void]$g.ColumnDefinitions.Add($c0); [void]$g.ColumnDefinitions.Add($c1); [void]$g.ColumnDefinitions.Add($c2)
 
         $icoBox = New-Object System.Windows.Controls.Border
-        $icoBox.Width = 40
-        $icoBox.Height = 40
-        $icoBox.CornerRadius = New-Object System.Windows.CornerRadius(10)
-        $icoBox.Background = if ($global:isDark) { Brush("#1A2332") } else { Brush("#F1F5F9") }
+        $icoBox.Width = 44
+        $icoBox.Height = 44
+        $icoBox.CornerRadius = New-Object System.Windows.CornerRadius(12)
+        $icoBox.Background = if ($global:isDark) { Brush($icoBgDark) } else { Brush($icoBgLight) }
+        $icoBox.BorderBrush = Brush($icoBorder)
+        $icoBox.BorderThickness = New-Object System.Windows.Thickness(1.2)
         $icoBox.Margin = New-Object System.Windows.Thickness(0,0,14,0)
 
-        $icoTxt = New-Object System.Windows.Controls.TextBlock
-        $icoTxt.Text = $icon
-        $icoTxt.FontSize = 18
-        $icoTxt.HorizontalAlignment = "Center"
-        $icoTxt.VerticalAlignment = "Center"
-        $icoBox.Child = $icoTxt
+        if ($icon -is [System.Windows.UIElement]) {
+            $icoBox.Child = $icon
+        } else {
+            $icoTxt = New-Object System.Windows.Controls.TextBlock
+            $icoTxt.Text = $icon
+            $icoTxt.FontSize = 20
+            $icoTxt.Foreground = Brush($icoColor)
+            $icoTxt.FontFamily = New-Object System.Windows.Media.FontFamily("Segoe UI Emoji, Segoe UI Symbol, Segoe MDL2 Assets")
+            $icoTxt.HorizontalAlignment = "Center"
+            $icoTxt.VerticalAlignment = "Center"
+            $icoBox.Child = $icoTxt
+        }
         [System.Windows.Controls.Grid]::SetColumn($icoBox, 0)
         [void]$g.Children.Add($icoBox)
 
@@ -9702,13 +9756,15 @@ $btnOpenToolsModal.Add_Click({
 
 # Sistem & Disk Temizleyici kartı araçlar penceresinden kaldırıldı (Ana ekranda zaten mevcuttur)
 
+    # 1. Windows Güncellemeleri: Canlı Parlak Mavi
     Add-ModernToolCard "🔄" "Windows Güncellemelerini Denetle" "Resmi Windows Update ayarlarını açar ve tarama yapar." "Aç" "#2563EB" {
         Start-Process "ms-settings:windowsupdate"
-    }
+    } -icoColor "#38BDF8" -icoBgDark "#0C2340" -icoBgLight "#E0F2FE" -icoBorder "#0284C7"
 
-    Add-ModernToolCard "🔑" "Windows & Office Lisanslama (MAS)" "Açık kaynak Microsoft Activation Scripts kütüphanesini açar." "Başlat" "#38BDF8" {
+    # 2. Windows & Office Lisanslama: Canlı Altın Sarısı / Kehribar
+    Add-ModernToolCard "🔑" "Windows & Office Lisanslama (MAS)" "Açık kaynak Microsoft Activation Scripts kütüphanesini açar." "Başlat" "#F59E0B" {
         Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"irm https://get.activated.win | iex`""
-    }
+    } -icoColor "#F59E0B" -icoBgDark "#382307" -icoBgLight "#FEF3C7" -icoBorder "#D97706" 
 
         function Show-ContextMenuComparison {
         $cWin = New-Object System.Windows.Window
@@ -9917,6 +9973,7 @@ $btnOpenToolsModal.Add_Click({
         [void]$cWin.ShowDialog()
     }
 
+    # 3. Windows 10 Klasik Menü: Canlı Mor / İndigo
     Add-ModernToolCard "📂" "Windows 10 Klasik Sağ Tık Menüsü" "Windows 10 tarzı tam ve doğrudan sağ tık menüsünü geri getirir." "Etkinleştir" "#22C55E" {
         REG ADD "HKEY_CURRENT_USER\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /t REG_SZ /f /reg:64 2>$null
         REG ADD "HKEY_CURRENT_USER\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /t REG_SZ /f /reg:32 2>$null
@@ -9925,14 +9982,15 @@ $btnOpenToolsModal.Add_Click({
         Show-ModernAlert "İşlem Başarılı" "Windows 10 klasik sağ tık menüsü uygulandı!" "OK"
     } "👁️ Önce / Sonra" "#6366F1" {
         Show-ContextMenuComparison
-    }
+    } -icoColor "#818CF8" -icoBgDark "#1E1B4B" -icoBgLight "#EEF2FF" -icoBorder "#6366F1"
 
+    # 4. Windows 11 Varsayılan Menü: Canlı Mercan / Kırmızı
     Add-ModernToolCard "↩️" "Windows 11 Varsayılan Sağ Tıka Dön" "Windows 11'in yeni modern sağ tık menüsüne geri döner." "Geri Yükle" "#EF4444" {
         REG DELETE "HKEY_CURRENT_USER\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}" /f 2>$null
         taskkill /f /im explorer.exe 2>$null
         Start-Process "C:\Windows\explorer.exe"
         Show-ModernAlert "İşlem Başarılı" "Varsayılan sağ tık menüsüne dönüldü." "OK"
-    }
+    } -icoColor "#F87171" -icoBgDark "#381014" -icoBgLight "#FEE2E2" -icoBorder "#EF4444" 
 
     $scroll.Content = $sp
     [System.Windows.Controls.Grid]::SetRow($scroll, 1)
