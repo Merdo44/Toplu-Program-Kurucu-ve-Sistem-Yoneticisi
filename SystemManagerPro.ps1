@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 
 # --- YÖNETİCİ YETKİ KONTROLÜ ---
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -5807,6 +5807,14 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     if ($targetSlug -and $targetSlug.Length -ge 3 -and -not $cleanTokens.Contains($targetSlug.ToLowerInvariant())) {
         $cleanTokens.Add($targetSlug.ToLowerInvariant())
     }
+    if ($targetId) {
+        $idParts = ($targetId -replace '[^a-zA-Z0-9]', ' ').Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+        foreach ($p in $idParts) {
+            if ($p.Length -ge 3 -and $p.ToLowerInvariant() -notin $skipWords -and -not $cleanTokens.Contains($p.ToLowerInvariant())) {
+                $cleanTokens.Add($p.ToLowerInvariant())
+            }
+        }
+    }
     if ($cleanTokens.Count -eq 0) { $cleanTokens.Add($targetName.ToLowerInvariant()) }
 
     # Boyut ve surum bilgisi
@@ -5838,31 +5846,41 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         }
     } catch {}
 
-    # PENCERE YAPISI
+    # PENCERE YAPISI (Resim 1 Tarzı Çerçevesiz Özel Modern Başlık)
     $wizWin = New-Object System.Windows.Window
     $wizWin.Title = "Derin Temizlik - $targetName"
     $wizWin.Width = 740
     $wizWin.Height = 610
     $wizWin.WindowStartupLocation = "CenterScreen"
-    $wizWin.Background = if ($global:isDark) { Brush("#0A0F1D") } else { Brush("#F8FAFC") }
-    $wizWin.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $wizWin.ResizeMode = "CanResizeWithGrip"
-    $wizWin.MinWidth = 680
-    $wizWin.MinHeight = 540
+    $wizWin.ResizeMode = "NoResize"
+    $wizWin.WindowStyle = "None"
+    $wizWin.AllowsTransparency = $true
+    $wizWin.Background = [System.Windows.Media.Brushes]::Transparent
+    $wizWin.ShowInTaskbar = $true
     try { if ($window -and $window.IsVisible) { $wizWin.Owner = $window } } catch {}
+
+    $wizOuterBorder = New-Object System.Windows.Controls.Border
+    $wizOuterBorder.CornerRadius = New-Object System.Windows.CornerRadius(14)
+    $wizOuterBorder.Background = if ($global:isDark) { Brush("#0A0F1D") } else { Brush("#F8FAFC") }
+    $wizOuterBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#CBD5E1") }
+    $wizOuterBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
+    $wizOuterBorder.Padding = New-Object System.Windows.Thickness(22)
 
     # Kok Izgara
     $rootGrid = New-Object System.Windows.Controls.Grid
-    $rootGrid.Margin = New-Object System.Windows.Thickness(22)
     $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
     $r1 = New-Object System.Windows.Controls.RowDefinition; $r1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     $r2 = New-Object System.Windows.Controls.RowDefinition; $r2.Height = [System.Windows.GridLength]::Auto
     [void]$rootGrid.RowDefinitions.Add($r0); [void]$rootGrid.RowDefinitions.Add($r1); [void]$rootGrid.RowDefinitions.Add($r2)
 
-    # Ortak Baslik Alani
-    $hdrPanel = New-Object System.Windows.Controls.StackPanel
-    $hdrPanel.Margin = New-Object System.Windows.Thickness(0, 0, 0, 16)
+    # Ortak Baslik Alani (Sürüklenebilir ve Özel Kapatma Butonlu)
+    $hdrGrid = New-Object System.Windows.Controls.Grid
+    $hdrGrid.Margin = New-Object System.Windows.Thickness(0, 0, 0, 16)
+    $hc0 = New-Object System.Windows.Controls.ColumnDefinition; $hc0.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $hc1 = New-Object System.Windows.Controls.ColumnDefinition; $hc1.Width = [System.Windows.GridLength]::Auto
+    [void]$hdrGrid.ColumnDefinitions.Add($hc0); [void]$hdrGrid.ColumnDefinitions.Add($hc1)
 
+    $hdrPanel = New-Object System.Windows.Controls.StackPanel
     $hdrTitle = New-Object System.Windows.Controls.TextBlock
     $hdrTitle.Text = "Seçilen programı kaldırmak istediğinizden emin misiniz?"
     $hdrTitle.FontSize = 16
@@ -5875,11 +5893,31 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $hdrSub.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
     $hdrSub.Margin = New-Object System.Windows.Thickness(0, 4, 0, 0)
     $hdrSub.TextWrapping = "Wrap"
-
     [void]$hdrPanel.Children.Add($hdrTitle)
     [void]$hdrPanel.Children.Add($hdrSub)
-    [System.Windows.Controls.Grid]::SetRow($hdrPanel, 0)
-    [void]$rootGrid.Children.Add($hdrPanel)
+    [System.Windows.Controls.Grid]::SetColumn($hdrPanel, 0)
+    [void]$hdrGrid.Children.Add($hdrPanel)
+
+    $closeWizBtn = New-Object System.Windows.Controls.Border
+    $closeWizBtn.Width = 32; $closeWizBtn.Height = 32
+    $closeWizBtn.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $closeWizBtn.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $closeWizBtn.Cursor = "Hand"
+    $closeWizBtn.VerticalAlignment = "Top"
+    $closeWizTxt = New-Object System.Windows.Controls.TextBlock
+    $closeWizTxt.Text = "✕"; $closeWizTxt.FontSize = 14; $closeWizTxt.FontWeight = "Bold"
+    $closeWizTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $closeWizTxt.HorizontalAlignment = "Center"; $closeWizTxt.VerticalAlignment = "Center"
+    $closeWizBtn.Child = $closeWizTxt
+    $closeWizBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
+    $closeWizBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
+    $closeWizBtn.Add_MouseLeftButtonUp({ $wizWin.Close() })
+    [System.Windows.Controls.Grid]::SetColumn($closeWizBtn, 1)
+    [void]$hdrGrid.Children.Add($closeWizBtn)
+
+    $hdrGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $wizWin.DragMove() } })
+    [System.Windows.Controls.Grid]::SetRow($hdrGrid, 0)
+    [void]$rootGrid.Children.Add($hdrGrid)
 
     $foundFiles = [System.Collections.Generic.List[PSCustomObject]]::new()
     $foundRegs  = [System.Collections.Generic.List[PSCustomObject]]::new()
@@ -6257,17 +6295,25 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
     $allRegCheckboxes = [System.Collections.Generic.List[System.Windows.Controls.CheckBox]]::new()
     $allFileCheckboxes = [System.Collections.Generic.List[System.Windows.Controls.CheckBox]]::new()
 
-    # Tarama fonksiyonu
+    # Tarama fonksiyonu (Gelişmiş Dosya, Paket ve Kayıt Defteri Tarayıcı)
     $runDeepScan = {
         param([string]$scanMode)
         $foundFiles.Clear()
         $foundRegs.Clear()
 
-        # 1. Dosya ve Klasör Taraması
+        # 1. Dosya ve Klasör Taraması (WinGet Paketleri, ProgramData, AppData, Başlat Menüsü ve Kısayollar)
         $scanDirs = @(
             $env:APPDATA,
             $env:LOCALAPPDATA,
-            $env:ProgramData
+            $env:ProgramData,
+            (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"),
+            (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
+            (Join-Path $env:LOCALAPPDATA "Programs"),
+            (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"),
+            (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"),
+            (Join-Path $env:USERPROFILE "Desktop"),
+            (Join-Path $env:PUBLIC "Desktop"),
+            ($env:SystemDrive + "\")
         )
         if ($scanMode -eq "Advanced" -or $scanMode -eq "Moderate") {
             $scanDirs += @(
@@ -6281,29 +6327,39 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
 
         foreach ($dir in $scanDirs) {
             try {
-                $subItems = Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue
+                $subItems = Get-ChildItem -LiteralPath $dir -ErrorAction SilentlyContinue
                 foreach ($sub in $subItems) {
                     $subNameLow = $sub.Name.ToLowerInvariant()
-                    if ($subNameLow -in @("windows", "microsoft", "temp", "system32", "common files", "packages")) { continue }
+                    # Sistem ana klasörlerini atla (ancak spesifik hedef klasörleri değil)
+                    if ($dir -eq $env:SystemDrive + "\" -and $subNameLow -in @("windows", "users", "perflogs", "system volume information", "$recycle.bin", "recovery", "documents and settings")) { continue }
+                    if ($dir -in @($env:APPDATA, $env:LOCALAPPDATA) -and $subNameLow -in @("windows", "microsoft", "temp", "system32", "packages")) { continue }
 
                     foreach ($token in $cleanTokens) {
                         if ($subNameLow -like "*$token*") {
                             $sizeStr = "0 KB"
                             $modDate = $sub.LastWriteTime.ToString("dd.MM.yyyy HH:mm")
-                            try {
-                                $bytes = (Get-ChildItem -LiteralPath $sub.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
-                                if ($bytes -gt 0) {
-                                    if ($bytes -ge 1GB) { $sizeStr = "$([Math]::Round($bytes / 1GB, 1)) GB" }
-                                    elseif ($bytes -ge 1MB) { $sizeStr = "$([Math]::Round($bytes / 1MB, 1)) MB" }
+                            if ($sub.PSIsContainer) {
+                                try {
+                                    $bytes = (Get-ChildItem -LiteralPath $sub.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
+                                    if ($bytes -gt 0) {
+                                        if ($bytes -ge 1GB) { $sizeStr = "$([Math]::Round($bytes / 1GB, 1)) GB" }
+                                        elseif ($bytes -ge 1MB) { $sizeStr = "$([Math]::Round($bytes / 1MB, 1)) MB" }
+                                        else { $sizeStr = "$([Math]::Round($bytes / 1KB, 1)) KB" }
+                                    }
+                                } catch {}
+                            } else {
+                                try {
+                                    $bytes = $sub.Length
+                                    if ($bytes -ge 1MB) { $sizeStr = "$([Math]::Round($bytes / 1MB, 1)) MB" }
                                     else { $sizeStr = "$([Math]::Round($bytes / 1KB, 1)) KB" }
-                                }
-                            } catch {}
+                                } catch {}
+                            }
 
                             $alreadyAdded = $false
                             foreach ($ff in $foundFiles) { if ($ff.Path -eq $sub.FullName) { $alreadyAdded = $true; break } }
                             if (-not $alreadyAdded) {
                                 $foundFiles.Add([PSCustomObject]@{
-                                    Type      = "Klasör"
+                                    Type      = if ($sub.PSIsContainer) { "Klasör" } else { "Dosya" }
                                     Path      = $sub.FullName
                                     Size      = $sizeStr
                                     Date      = $modDate
@@ -6316,38 +6372,59 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
             } catch {}
         }
 
-        # 2. Kayıt Defteri (Registry) Taraması
-        $regRoots = @(
-            "HKCU:\Software",
-            "HKLM:\Software"
+        # 2. Kayıt Defteri (Registry) Taraması (Yazılım Anahtarları, Uninstall Listeleri ve App Paths)
+        $regTargetList = @(
+            @{ Root = "HKCU"; Path = "HKCU:\Software"; FilterSys = $true },
+            @{ Root = "HKLM"; Path = "HKLM:\Software"; FilterSys = $true },
+            @{ Root = "HKCU"; Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false },
+            @{ Root = "HKLM"; Path = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false },
+            @{ Root = "HKCU"; Path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths"; FilterSys = $false },
+            @{ Root = "HKLM"; Path = "HKLM:\Software\Microsoft\Windows\CurrentVersion\App Paths"; FilterSys = $false }
         )
-        if ($scanMode -eq "Advanced") {
-            $regRoots += @("HKLM:\Software\WOW6432Node")
+        if ($scanMode -eq "Advanced" -or $scanMode -eq "Moderate") {
+            $regTargetList += @(
+                @{ Root = "HKLM"; Path = "HKLM:\Software\WOW6432Node"; FilterSys = $true },
+                @{ Root = "HKLM"; Path = "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"; FilterSys = $false }
+            )
         }
 
-        foreach ($regRoot in $regRoots) {
-            if (-not (Test-Path $regRoot)) { continue }
+        foreach ($rt in $regTargetList) {
+            if (-not (Test-Path $rt.Path)) { continue }
             try {
-                $regKeys = Get-ChildItem -Path $regRoot -ErrorAction SilentlyContinue
+                $regKeys = Get-ChildItem -Path $rt.Path -ErrorAction SilentlyContinue
                 foreach ($rk in $regKeys) {
                     $kName = [System.IO.Path]::GetFileName($rk.Name)
                     $kNameLow = $kName.ToLowerInvariant()
-                    if ($kNameLow -in @("microsoft", "classes", "policies", "registeredapplications", "windows")) { continue }
+                    if ($rt.FilterSys -and $kNameLow -in @("microsoft", "classes", "policies", "registeredapplications", "windows")) { continue }
 
+                    $matched = $false
                     foreach ($token in $cleanTokens) {
-                        if ($kNameLow -like "*$token*") {
-                            $alreadyAdded = $false
-                            foreach ($rr in $foundRegs) { if ($rr.Path -eq $rk.Name) { $alreadyAdded = $true; break } }
-                            if (-not $alreadyAdded) {
-                                $foundRegs.Add([PSCustomObject]@{
-                                    Root      = if ($rk.Name.StartsWith("HKEY_CURRENT_USER")) { "HKCU" } else { "HKLM" }
-                                    KeyName   = $kName
-                                    Path      = $rk.Name
-                                    SubKeys   = $rk.SubKeyCount
-                                    Values    = $rk.ValueCount
-                                    IsChecked = $true
-                                })
+                        if ($kNameLow -like "*$token*") { $matched = $true; break }
+                    }
+                    # Eger anahtar adi GUID/ID ise DisplayName kontrol et
+                    if (-not $matched) {
+                        try {
+                            $dVal = (Get-ItemProperty -LiteralPath $rk.PSPath -Name "DisplayName" -ErrorAction SilentlyContinue).DisplayName
+                            if ($dVal) {
+                                foreach ($token in $cleanTokens) {
+                                    if ($dVal.ToLowerInvariant() -like "*$token*") { $matched = $true; break }
+                                }
                             }
+                        } catch {}
+                    }
+
+                    if ($matched) {
+                        $alreadyAdded = $false
+                        foreach ($rr in $foundRegs) { if ($rr.Path -eq $rk.Name) { $alreadyAdded = $true; break } }
+                        if (-not $alreadyAdded) {
+                            $foundRegs.Add([PSCustomObject]@{
+                                Root      = $rt.Root
+                                KeyName   = $kName
+                                Path      = $rk.Name
+                                SubKeys   = $rk.SubKeyCount
+                                Values    = $rk.ValueCount
+                                IsChecked = $true
+                            })
                         }
                     }
                 }
@@ -6621,7 +6698,8 @@ function Show-DeepCleanWizard($app, [string]$appName = "", [string]$appId = "", 
         }
     })
 
-    $wizWin.Content = $rootGrid
+    $wizOuterBorder.Child = $rootGrid
+    $wizWin.Content = $wizOuterBorder
     [void]$wizWin.ShowDialog()
 }
 
@@ -7870,12 +7948,19 @@ function Show-DiskCleanerModal {
     $cWin.Title = "Sistem ve Disk Temizleyici (PC Cleaner Pro)"
     $cWin.Width = 840
     $cWin.Height = 690
-    $cWin.MinWidth = 760
-    $cWin.MinHeight = 580
     $cWin.WindowStartupLocation = "CenterScreen"
+    $cWin.ResizeMode = "NoResize"
+    $cWin.WindowStyle = "None"
+    $cWin.AllowsTransparency = $true
+    $cWin.Background = [System.Windows.Media.Brushes]::Transparent
+    $cWin.ShowInTaskbar = $true
     try { if ($window -and $window.IsVisible) { $cWin.Owner = $window } } catch {}
-    $cWin.Background = if ($global:isDark) { Brush("#0B0E14") } else { Brush("#F0F2F5") }
-    $cWin.Foreground = if ($global:isDark) { Brush("#F3F4F6") } else { Brush("#0F172A") }
+
+    $cOuterBorder = New-Object System.Windows.Controls.Border
+    $cOuterBorder.CornerRadius = New-Object System.Windows.CornerRadius(14)
+    $cOuterBorder.Background = if ($global:isDark) { Brush("#0A0F1A") } else { Brush("#F8FAFC") }
+    $cOuterBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#CBD5E1") }
+    $cOuterBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
 
     $gridMain = New-Object System.Windows.Controls.Grid
     $r0 = New-Object System.Windows.Controls.RowDefinition; $r0.Height = [System.Windows.GridLength]::Auto
@@ -7902,7 +7987,8 @@ function Show-DiskCleanerModal {
     $hCol0 = New-Object System.Windows.Controls.ColumnDefinition; $hCol0.Width = [System.Windows.GridLength]::Auto
     $hCol1 = New-Object System.Windows.Controls.ColumnDefinition; $hCol1.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
     $hCol2 = New-Object System.Windows.Controls.ColumnDefinition; $hCol2.Width = [System.Windows.GridLength]::Auto
-    [void]$hGrid.ColumnDefinitions.Add($hCol0); [void]$hGrid.ColumnDefinitions.Add($hCol1); [void]$hGrid.ColumnDefinitions.Add($hCol2)
+    $hCol3 = New-Object System.Windows.Controls.ColumnDefinition; $hCol3.Width = [System.Windows.GridLength]::Auto
+    [void]$hGrid.ColumnDefinitions.Add($hCol0); [void]$hGrid.ColumnDefinitions.Add($hCol1); [void]$hGrid.ColumnDefinitions.Add($hCol2); [void]$hGrid.ColumnDefinitions.Add($hCol3)
 
     $logoB = New-Object System.Windows.Controls.Border
     $logoB.Width = 46; $logoB.Height = 46
@@ -7969,6 +8055,27 @@ function Show-DiskCleanerModal {
 
     [System.Windows.Controls.Grid]::SetColumn($sumBorder, 2)
     [void]$hGrid.Children.Add($sumBorder)
+
+    # Resim 1 Tarzi Ozel Modern Kapatma Butonu
+    $closeCleanerBtn = New-Object System.Windows.Controls.Border
+    $closeCleanerBtn.Width = 32; $closeCleanerBtn.Height = 32
+    $closeCleanerBtn.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $closeCleanerBtn.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $closeCleanerBtn.Cursor = "Hand"
+    $closeCleanerBtn.VerticalAlignment = "Center"
+    $closeCleanerBtn.Margin = New-Object System.Windows.Thickness(14, 0, 0, 0)
+    $closeCleanerTxt = New-Object System.Windows.Controls.TextBlock
+    $closeCleanerTxt.Text = "✕"; $closeCleanerTxt.FontSize = 14; $closeCleanerTxt.FontWeight = "Bold"
+    $closeCleanerTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $closeCleanerTxt.HorizontalAlignment = "Center"; $closeCleanerTxt.VerticalAlignment = "Center"
+    $closeCleanerBtn.Child = $closeCleanerTxt
+    $closeCleanerBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
+    $closeCleanerBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
+    $closeCleanerBtn.Add_MouseLeftButtonUp({ $cWin.Close() })
+    [System.Windows.Controls.Grid]::SetColumn($closeCleanerBtn, 3)
+    [void]$hGrid.Children.Add($closeCleanerBtn)
+
+    $headerBorder.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $cWin.DragMove() } })
     $headerBorder.Child = $hGrid
 
     # 2. ACTION BAR (Select All + Buttons)
@@ -8598,7 +8705,8 @@ function Show-DiskCleanerModal {
         & $ScanCategories
     })
 
-    $cWin.Content = $gridMain
+    $cOuterBorder.Child = $gridMain
+    $cWin.Content = $cOuterBorder
     [void]$cWin.ShowDialog()
 }
 
@@ -8609,13 +8717,20 @@ function Show-DriverManagerModal {
     $hubWin.Title = "Sürücü & Aygıt Yöneticisi (Driver & Device Manager Hub)"
     $hubWin.Width = 1140
     $hubWin.Height = 760
-    $hubWin.MinHeight = 650
-    $hubWin.MinWidth = 950
     $hubWin.WindowStartupLocation = "CenterOwner"
+    $hubWin.ResizeMode = "NoResize"
+    $hubWin.WindowStyle = "None"
+    $hubWin.AllowsTransparency = $true
+    $hubWin.Background = [System.Windows.Media.Brushes]::Transparent
+    $hubWin.ShowInTaskbar = $true
     try { if ($window -and $window.IsVisible) { $hubWin.Owner = $window } } catch {}
-    $hubWin.Background = if ($global:isDark) { Brush("#0B0E14") } else { Brush("#F0F2F5") }
-    $hubWin.Foreground = if ($global:isDark) { Brush("#F3F4F6") } else { Brush("#0F172A") }
     $hubWin.Add_Closed({ $global:currentToolsWin = $null })
+
+    $hubOuterBorder = New-Object System.Windows.Controls.Border
+    $hubOuterBorder.CornerRadius = New-Object System.Windows.CornerRadius(14)
+    $hubOuterBorder.Background = if ($global:isDark) { Brush("#0A0F1A") } else { Brush("#F0F2F5") }
+    $hubOuterBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#CBD5E1") }
+    $hubOuterBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
 
     # Modern Custom ScrollBar Dictionary Injection (matching main window theme)
     $thumbColor = if ($global:isDark) { "#334155" } else { "#CBD5E1" }
@@ -8900,6 +9015,26 @@ function Show-DriverManagerModal {
     [void]$topBtns.Children.Add($btnScanHardware)
     [void]$topBtns.Children.Add($btnInstallInf)
     [void]$topBtns.Children.Add($btnDevMgmt)
+
+    # Resim 1 Tarzı Özel Modern Kapatma Butonu
+    $closeHubBtn = New-Object System.Windows.Controls.Border
+    $closeHubBtn.Width = 32; $closeHubBtn.Height = 32
+    $closeHubBtn.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $closeHubBtn.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $closeHubBtn.Cursor = "Hand"
+    $closeHubBtn.VerticalAlignment = "Center"
+    $closeHubBtn.Margin = New-Object System.Windows.Thickness(12, 0, 0, 0)
+    $closeHubTxt = New-Object System.Windows.Controls.TextBlock
+    $closeHubTxt.Text = "✕"; $closeHubTxt.FontSize = 14; $closeHubTxt.FontWeight = "Bold"
+    $closeHubTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $closeHubTxt.HorizontalAlignment = "Center"; $closeHubTxt.VerticalAlignment = "Center"
+    $closeHubBtn.Child = $closeHubTxt
+    $closeHubBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
+    $closeHubBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
+    $closeHubBtn.Add_MouseLeftButtonUp({ $hubWin.Close() })
+    [void]$topBtns.Children.Add($closeHubBtn)
+
+    $headerGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $hubWin.DragMove() } })
     [System.Windows.Controls.Grid]::SetColumn($topBtns, 1)
     [void]$headerGrid.Children.Add($topBtns)
     [System.Windows.Controls.Grid]::SetRow($headerGrid, 0)
@@ -9315,7 +9450,8 @@ function Show-DriverManagerModal {
         & $script:filterHubCards
     }
 
-    $hubWin.Content = $rootGrid
+    $hubOuterBorder.Child = $rootGrid
+    $hubWin.Content = $hubOuterBorder
     & $script:refreshHub
     [void]$hubWin.ShowDialog()
 }
@@ -9332,34 +9468,77 @@ $btnOpenToolsModal.Add_Click({
     $global:currentToolsWin = $toolsWin
     $toolsWin.Title = "Gelişmiş Sistem Ayarları & İnce Ayarlar"
     $toolsWin.Width = 660
-    $toolsWin.Height = 560
+    $toolsWin.Height = 580
     $toolsWin.WindowStartupLocation = "CenterOwner"
+    $toolsWin.ResizeMode = "NoResize"
+    $toolsWin.WindowStyle = "None"
+    $toolsWin.AllowsTransparency = $true
+    $toolsWin.Background = [System.Windows.Media.Brushes]::Transparent
+    $toolsWin.ShowInTaskbar = $true
     try { if ($window -and $window.IsVisible) { $toolsWin.Owner = $window } } catch {}
     $toolsWin.Add_Closed({ $global:currentToolsWin = $null })
-    $toolsWin.Background = if ($global:isDark) { Brush("#0B0E14") } else { Brush("#F8FAFC") }
-    $toolsWin.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $toolsWin.ResizeMode = "NoResize"
 
-    $scroll = New-Object System.Windows.Controls.ScrollViewer
-    $scroll.VerticalScrollBarVisibility = "Auto"
+    $toolsOuterBorder = New-Object System.Windows.Controls.Border
+    $toolsOuterBorder.CornerRadius = New-Object System.Windows.CornerRadius(14)
+    $toolsOuterBorder.Background = if ($global:isDark) { Brush("#0A0F1A") } else { Brush("#F8FAFC") }
+    $toolsOuterBorder.BorderBrush = if ($global:isDark) { Brush("#1E293B") } else { Brush("#CBD5E1") }
+    $toolsOuterBorder.BorderThickness = New-Object System.Windows.Thickness(1.5)
 
-    $sp = New-Object System.Windows.Controls.StackPanel
-    $sp.Margin = New-Object System.Windows.Thickness(24)
+    $toolsRootGrid = New-Object System.Windows.Controls.Grid
+    $tr0 = New-Object System.Windows.Controls.RowDefinition; $tr0.Height = [System.Windows.GridLength]::Auto
+    $tr1 = New-Object System.Windows.Controls.RowDefinition; $tr1.Height = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    [void]$toolsRootGrid.RowDefinitions.Add($tr0); [void]$toolsRootGrid.RowDefinitions.Add($tr1)
 
+    # Resim 1 Tarzı Özel Modern Başlık ve Kapatma Butonu
+    $tHeaderGrid = New-Object System.Windows.Controls.Grid
+    $tHeaderGrid.Margin = New-Object System.Windows.Thickness(24, 20, 24, 12)
+    $thc0 = New-Object System.Windows.Controls.ColumnDefinition; $thc0.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+    $thc1 = New-Object System.Windows.Controls.ColumnDefinition; $thc1.Width = [System.Windows.GridLength]::Auto
+    [void]$tHeaderGrid.ColumnDefinitions.Add($thc0); [void]$tHeaderGrid.ColumnDefinitions.Add($thc1)
+
+    $tHeaderTitles = New-Object System.Windows.Controls.StackPanel
     $tHeader = New-Object System.Windows.Controls.TextBlock
-    $tHeader.Text = "Sistem ve Windows 11 İnce Ayarları"
+    $tHeader.Text = "⚙️  Sistem ve Windows 11 İnce Ayarları"
     $tHeader.FontSize = 17
     $tHeader.FontWeight = "Bold"
     $tHeader.Foreground = if ($global:isDark) { Brush("#F8FAFC") } else { Brush("#0F172A") }
-    $tHeader.Margin = New-Object System.Windows.Thickness(0,0,0,4)
-    [void]$sp.Children.Add($tHeader)
+    $tHeader.Margin = New-Object System.Windows.Thickness(0,0,0,3)
+    [void]$tHeaderTitles.Children.Add($tHeader)
 
     $tSub = New-Object System.Windows.Controls.TextBlock
     $tSub.Text = "Tek tıkla sistem güncellemeleri, aktivasyon ve arayüz optimizasyonları."
     $tSub.FontSize = 11
     $tSub.Foreground = Brush("#8C9BB0")
-    $tSub.Margin = New-Object System.Windows.Thickness(0,0,0,18)
-    [void]$sp.Children.Add($tSub)
+    [void]$tHeaderTitles.Children.Add($tSub)
+    [System.Windows.Controls.Grid]::SetColumn($tHeaderTitles, 0)
+    [void]$tHeaderGrid.Children.Add($tHeaderTitles)
+
+    $closeToolsBtn = New-Object System.Windows.Controls.Border
+    $closeToolsBtn.Width = 32; $closeToolsBtn.Height = 32
+    $closeToolsBtn.CornerRadius = New-Object System.Windows.CornerRadius(8)
+    $closeToolsBtn.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }
+    $closeToolsBtn.Cursor = "Hand"
+    $closeToolsBtn.VerticalAlignment = "Center"
+    $closeToolsTxt = New-Object System.Windows.Controls.TextBlock
+    $closeToolsTxt.Text = "✕"; $closeToolsTxt.FontSize = 14; $closeToolsTxt.FontWeight = "Bold"
+    $closeToolsTxt.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") }
+    $closeToolsTxt.HorizontalAlignment = "Center"; $closeToolsTxt.VerticalAlignment = "Center"
+    $closeToolsBtn.Child = $closeToolsTxt
+    $closeToolsBtn.Add_MouseEnter({ param($s,$e) $s.Background = Brush("#DC2626"); $s.Child.Foreground = Brush("#FFFFFF") })
+    $closeToolsBtn.Add_MouseLeave({ param($s,$e) $s.Background = if ($global:isDark) { Brush("#1E293B") } else { Brush("#E2E8F0") }; $s.Child.Foreground = if ($global:isDark) { Brush("#94A3B8") } else { Brush("#64748B") } })
+    $closeToolsBtn.Add_MouseLeftButtonUp({ $toolsWin.Close() })
+    [System.Windows.Controls.Grid]::SetColumn($closeToolsBtn, 1)
+    [void]$tHeaderGrid.Children.Add($closeToolsBtn)
+
+    $tHeaderGrid.Add_MouseLeftButtonDown({ param($s,$e) if ($e.LeftButton -eq [System.Windows.Input.MouseButtonState]::Pressed) { $toolsWin.DragMove() } })
+    [System.Windows.Controls.Grid]::SetRow($tHeaderGrid, 0)
+    [void]$toolsRootGrid.Children.Add($tHeaderGrid)
+
+    $scroll = New-Object System.Windows.Controls.ScrollViewer
+    $scroll.VerticalScrollBarVisibility = "Auto"
+
+    $sp = New-Object System.Windows.Controls.StackPanel
+    $sp.Margin = New-Object System.Windows.Thickness(24, 6, 24, 24)
 
     function Add-ModernToolCard($icon, $title, $desc, $btnText, $btnColor, [scriptblock]$action, $extraBtnText = $null, $extraBtnColor = "#6366F1", [scriptblock]$extraAction = $null) {
         $cBorder = New-Object System.Windows.Controls.Border
@@ -9690,7 +9869,10 @@ $btnOpenToolsModal.Add_Click({
     }
 
     $scroll.Content = $sp
-    $toolsWin.Content = $scroll
+    [System.Windows.Controls.Grid]::SetRow($scroll, 1)
+    [void]$toolsRootGrid.Children.Add($scroll)
+    $toolsOuterBorder.Child = $toolsRootGrid
+    $toolsWin.Content = $toolsOuterBorder
     [void]$toolsWin.ShowDialog()
 })
 
